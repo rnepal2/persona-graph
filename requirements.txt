@@ -1,0 +1,8 @@
+langchain
+langgraph
+openai
+google-generativeai
+duckduckgo-search
+beautifulsoup4
+requests
+python-dotenv
