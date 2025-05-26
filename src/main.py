@@ -12,9 +12,11 @@ if __name__ == "__main__":
         "leadership_info": None,
         "reputation_info": None,
         "strategy_info": None,
+        "background_info": None, # Initialize new field in AgentState
         "aggregated_profile": None,
         "error_message": None,
-        "next_agent_to_call": None # Will be set by the planner/supervisor
+        "next_agent_to_call": None, # Will be set by the planner/supervisor
+        "metadata": [{"source": "main_initial", "data": "test_value"}] # Example initial metadata
     }
 
     print(f"Initial state being passed to the graph: {initial_input}")

@@ -1,7 +1,8 @@
 # src/agents/strategy_agent.py
-from typing import TypedDict, List, Optional, Dict
+from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # For the wrapper node later
+from src.utils.llm_utils import get_openai_response # Added import
 
 # Define the internal state for the Strategy Agent subgraph
 class StrategyAgentState(TypedDict):
@@ -11,11 +12,43 @@ class StrategyAgentState(TypedDict):
     scraped_data: Optional[List[str]]
     strategy_report: Optional[str]
     error_message: Optional[str]
+    metadata: Optional[List[Dict[str, Any]]] # New field
 
 # Placeholder Internal Nodes for StrategyAgent Subgraph
-def generate_strategy_queries_node(state: StrategyAgentState) -> StrategyAgentState:
-    print("[StrategyAgent] Generating queries for strategy...")
-    state['generated_queries'] = ["placeholder query 1 for strategy", "placeholder query 2 for strategy"]
+async def generate_strategy_queries_node(state: StrategyAgentState) -> StrategyAgentState:
+    print("[StrategyAgent] Generating strategy queries via LLM...")
+
+    profile_summary = state.get("input_profile_summary", "No profile summary provided.")
+    profile_name_placeholder = "the individual" # Or derive from summary
+
+    system_prompt = """
+You are a business strategy and financial analyst. Your task is to formulate search queries that will uncover an executive's strategic initiatives, business impact, and involvement in major organizational changes or achievements.
+            """
+    user_prompt = f"""
+Generate 3-5 distinct search queries to identify the strategic contributions and business impact of {profile_name_placeholder}. Their current profile summary is: "{profile_summary}". Focus the queries on finding information related to:
+1. Specific business units, products, or markets they were responsible for and their performance.
+2. Major strategic initiatives they led (e.g., M&A, digital transformation, market expansion, turnarounds).
+3. Quantifiable business results or KPIs achieved under their leadership (e.g., revenue growth, market share changes, innovation milestones).
+4. Their role in company vision, long-term strategy, or significant investments.
+
+Return the queries as a numbered list, each query on a new line.
+            """
+
+    raw_llm_response = await get_openai_response(user_prompt, system_prompt=system_prompt)
+
+    generated_queries = []
+    if raw_llm_response:
+        queries = raw_llm_response.strip().split('\n')
+        for q in queries:
+            cleaned_q = q.split('.', 1)[-1].split(')', 1)[-1].strip()
+            if cleaned_q:
+                generated_queries.append(cleaned_q)
+        print(f"[StrategyAgent] LLM generated queries: {generated_queries}")
+    else:
+        print("[StrategyAgent] LLM call failed or returned no response. Using default placeholder queries.")
+        generated_queries = ["default strategy query 1", "default strategy query 2"]
+
+    state['generated_queries'] = generated_queries
     return state
 
 def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAgentState:
@@ -72,7 +105,8 @@ def strategy_agent_node(state: AgentState) -> AgentState:
         search_results=None,
         scraped_data=None,
         strategy_report=None,
-        error_message=None
+        error_message=None,
+        metadata=list(state.get('metadata') or []) # Pass a shallow copy
     )
 
     # 2. Invoke the subgraph
@@ -106,6 +140,12 @@ def strategy_agent_node(state: AgentState) -> AgentState:
         if not state.get('error_message'): # Don't overwrite specific exception message
              state['error_message'] = (state.get('error_message', '') + " StrategyAgent: Subgraph invocation failed critically.").strip()
 
+    # Merge metadata from subgraph back to parent state
+    if subgraph_final_state and subgraph_final_state.get("metadata") is not None: # Check if metadata exists and is not None
+        state['metadata'] = subgraph_final_state.get("metadata") # Assign the list from subgraph
+        # print(f"[StrategyAgentWrapper] Updated parent metadata to: {state['metadata']}")
+    # If subgraph_final_state.get("metadata") is None, the parent's metadata (which was copied) remains unchanged in the parent.
+    # If the subgraph intended to clear metadata, it should return an empty list.
 
     # 4. Set next agent in parent graph
     print("[StrategyAgentWrapper] Setting next agent to ProfileAggregatorAgent.")

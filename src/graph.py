@@ -15,6 +15,7 @@ from src.agents import (
     leadership_agent_node,
     reputation_agent_node,
     strategy_agent_node,
+    background_agent_node, # Added background_agent_node
     profile_aggregator_node
 )
 
@@ -25,6 +26,7 @@ graph = StateGraph(AgentState) # AgentState is now imported
 
 # Add nodes
 graph.add_node("planner_supervisor_node", planner_supervisor_node)
+graph.add_node("background_agent_node", background_agent_node) # Added background_agent_node
 graph.add_node("leadership_agent_node", leadership_agent_node)
 graph.add_node("reputation_agent_node", reputation_agent_node)
 graph.add_node("strategy_agent_node", strategy_agent_node)
@@ -43,7 +45,10 @@ def should_continue(state: AgentState) -> str:
     next_agent = state.get("next_agent_to_call")
     print(f"Routing based on next_agent_to_call: {next_agent}")
 
-    if next_agent == "LeadershipAgent":
+    # Order: Planner -> Background -> Leadership -> Reputation -> Strategy -> Aggregator
+    if next_agent == "BackgroundAgent":
+        return "background_agent_node"
+    elif next_agent == "LeadershipAgent":
         return "leadership_agent_node"
     elif next_agent == "ReputationAgent":
         return "reputation_agent_node"
@@ -51,13 +56,18 @@ def should_continue(state: AgentState) -> str:
         return "strategy_agent_node"
     elif next_agent == "ProfileAggregatorAgent":
         return "profile_aggregator_node"
-    else: # Includes None or any other unexpected value
-        print("No specific next agent, routing to END.")
+    else: # Includes None or any other unexpected value, or if planner didn't set (should not happen)
+        print(f"No specific valid next agent, or end of defined flow. Next agent: {next_agent}. Routing to END.")
         return END
 
 # Add conditional edges
 graph.add_conditional_edges(
     "planner_supervisor_node",
+    should_continue,
+)
+# Add conditional edge for the new BackgroundAgent
+graph.add_conditional_edges(
+    "background_agent_node",
     should_continue,
 )
 graph.add_conditional_edges(

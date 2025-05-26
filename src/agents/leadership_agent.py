@@ -1,7 +1,8 @@
 # src/agents/leadership_agent.py
-from typing import TypedDict, List, Optional, Dict
+from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # This will eventually be removed or changed when LeadershipAgent becomes a subgraph
+from src.utils.llm_utils import get_openai_response # Added import
 
 # Define the internal state for the Leadership Agent subgraph
 class LeadershipAgentState(TypedDict):
@@ -11,12 +12,43 @@ class LeadershipAgentState(TypedDict):
     scraped_data: Optional[List[str]]
     leadership_report: Optional[str]
     error_message: Optional[str]
+    metadata: Optional[List[Dict[str, Any]]] # New field
 
 # Placeholder Internal Nodes for LeadershipAgent Subgraph
-def generate_queries_node(state: LeadershipAgentState) -> LeadershipAgentState:
-    print("[LeadershipAgent] Generating queries...")
-    # Ensure the key exists and is initialized correctly if needed, or rely on TypedDict Optional for initial None
-    state['generated_queries'] = ["placeholder query 1 for leader", "placeholder query 2 for leader"]
+async def generate_leadership_queries_node(state: LeadershipAgentState) -> LeadershipAgentState:
+    print("[LeadershipAgent] Generating leadership queries via LLM...")
+
+    profile_summary = state.get("input_profile_summary", "No profile summary provided.")
+    profile_name_placeholder = "the individual" # Or derive from summary
+
+    system_prompt = """
+You are an expert research analyst specializing in executive leadership. Your task is to create search queries that will identify content related to a leader's style, decision-making processes, and team interactions.
+            """
+    user_prompt = f"""
+Generate 3-5 distinct search queries to find information about the leadership qualities and style of {profile_name_placeholder}. Their current profile summary is: "{profile_summary}". Focus on queries that would find:
+1. Descriptions of their leadership style or management philosophy (e.g., articles, interviews).
+2. Examples of significant decisions they made and the reported outcomes.
+3. Information about their team building, mentorship, or communication style.
+4. Quotes from them or about them regarding their leadership.
+
+Return the queries as a numbered list, each query on a new line.
+            """
+
+    raw_llm_response = await get_openai_response(user_prompt, system_prompt=system_prompt)
+
+    generated_queries = []
+    if raw_llm_response:
+        queries = raw_llm_response.strip().split('\n')
+        for q in queries:
+            cleaned_q = q.split('.', 1)[-1].split(')', 1)[-1].strip()
+            if cleaned_q:
+                generated_queries.append(cleaned_q)
+        print(f"[LeadershipAgent] LLM generated queries: {generated_queries}")
+    else:
+        print("[LeadershipAgent] LLM call failed or returned no response. Using default placeholder queries.")
+        generated_queries = ["default leadership query 1", "default leadership query 2"]
+
+    state['generated_queries'] = generated_queries
     return state
 
 def execute_search_node(state: LeadershipAgentState) -> LeadershipAgentState:
@@ -39,19 +71,25 @@ def compile_report_node(state: LeadershipAgentState) -> LeadershipAgentState:
     print("[LeadershipAgent] Compiling final report...")
     # This might refine the report from analyze_data_node
     state['leadership_report'] = (state.get('leadership_report', "") + " Final leadership report compiled.").strip()
+    
+    # Add metadata item
+    if state.get('metadata') is None:
+        state['metadata'] = []
+    state['metadata'].append({"source": "LeadershipAgent", "info": "Leadership report generated"})
+    print("[LeadershipAgent] Added item to its metadata.") # For logging
     return state
 
 # Instantiate and Build the Subgraph
 leadership_graph = StateGraph(LeadershipAgentState)
 
-leadership_graph.add_node("generate_queries", generate_queries_node)
+leadership_graph.add_node("generate_queries", generate_leadership_queries_node) # Temp, will be updated later
 leadership_graph.add_node("execute_search", execute_search_node)
 leadership_graph.add_node("scrape_results", scrape_results_node)
 leadership_graph.add_node("analyze_data", analyze_data_node)
 leadership_graph.add_node("compile_report", compile_report_node)
 
-leadership_graph.set_entry_point("generate_queries")
-leadership_graph.add_edge("generate_queries", "execute_search")
+leadership_graph.set_entry_point("generate_queries") # Temp, will be updated later
+leadership_graph.add_edge("generate_queries", "execute_search") # Temp, will be updated later
 leadership_graph.add_edge("execute_search", "scrape_results")
 leadership_graph.add_edge("scrape_results", "analyze_data")
 leadership_graph.add_edge("analyze_data", "compile_report")
@@ -80,11 +118,12 @@ def leadership_agent_node(state: AgentState) -> AgentState:
     # Optional fields will be None by default if not provided.
     initial_subgraph_state = LeadershipAgentState(
         input_profile_summary=parent_input,
-        generated_queries=None, # Or pass if some pre-generated queries exist
+        generated_queries=None, 
         search_results=None,
         scraped_data=None,
-        leadership_report=None,
-        error_message=None
+        leadership_report=None, 
+        error_message=None,
+        metadata=list(state.get('metadata') or []) # Pass a shallow copy
     )
 
     # 2. Invoke the subgraph
@@ -127,6 +166,17 @@ def leadership_agent_node(state: AgentState) -> AgentState:
     else: # Handles case where subgraph_final_state itself is None due to an exception during invoke
         if not state.get('error_message'): # Don't overwrite specific exception message from invoke's except block
             state['error_message'] = (state.get('error_message', '') + " LeadershipAgent: Subgraph invocation failed critically or returned None.").strip()
+
+        # Also handle metadata if subgraph_final_state is None
+        # Though typically metadata wouldn't be generated if the subgraph fails critically
+        # This ensures parent metadata isn't lost if it was intended to be modified even on failure by some logic (not current placeholder)
+
+    # Merge metadata from subgraph back to parent state
+    if subgraph_final_state and subgraph_final_state.get("metadata") is not None: # Check if metadata exists and is not None
+        state['metadata'] = subgraph_final_state.get("metadata") # Assign the list from subgraph
+        # print(f"[LeadershipAgentWrapper] Updated parent metadata to: {state['metadata']}")
+    # If subgraph_final_state.get("metadata") is None, the parent's metadata (which was copied) remains unchanged in the parent.
+    # If the subgraph intended to clear metadata, it should return an empty list.
 
 
     # 4. Set next agent in parent graph
