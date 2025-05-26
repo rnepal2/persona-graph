@@ -1,5 +1,6 @@
 # src/llm_utils.py
 
+import asyncio # Added for async
 from typing import Optional
 
 # Import API Keys from src.config
@@ -14,15 +15,22 @@ except ImportError:
 
 # OpenAI Integration
 try:
-    from openai import OpenAI, APIError as OpenAIApiError
+    # Try direct import first
+    from openai import AsyncOpenAI, APIError as OpenAIApiError
 except ImportError:
-    print("Warning: OpenAI library not installed. pip install openai")
-    OpenAI = None # type: ignore 
-    OpenAIApiError = None # type: ignore
+    try:
+        # Fallback to importing openai and accessing via attribute
+        import openai
+        AsyncOpenAI = openai.AsyncOpenAI
+        OpenAIApiError = openai.APIError # Assuming APIError is also accessible this way
+    except ImportError:
+        print("Warning: OpenAI library not installed. pip install openai")
+        AsyncOpenAI = None # type: ignore
+        OpenAIApiError = None # type: ignore
 
-def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") -> Optional[str]:
+async def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") -> Optional[str]:
     """
-    Gets a response from the OpenAI API.
+    Gets an asynchronous response from the OpenAI API.
 
     Args:
         prompt: The prompt to send to the LLM.
@@ -31,8 +39,8 @@ def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") -> Optio
     Returns:
         The LLM's response text, or None if an error occurs or API key is missing.
     """
-    if OpenAI is None or OpenAIApiError is None:
-        print("Error: OpenAI library is not available. Cannot get OpenAI response.")
+    if AsyncOpenAI is None or OpenAIApiError is None: # Check for AsyncOpenAI
+        print("Error: OpenAI Async library components are not available. Cannot get OpenAI response.")
         return None
 
     if not OPENAI_API_KEY:
@@ -40,9 +48,9 @@ def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") -> Optio
         return None
 
     try:
-        client = OpenAI(api_key=OPENAI_API_KEY)
-        print(f"Sending prompt to OpenAI model {model_name}...")
-        response = client.chat.completions.create(
+        client = AsyncOpenAI(api_key=OPENAI_API_KEY) # Use AsyncOpenAI
+        print(f"Sending prompt asynchronously to OpenAI model {model_name}...")
+        response = await client.chat.completions.create( # Use await
             model=model_name,
             messages=[{"role": "user", "content": prompt}]
         )
@@ -51,7 +59,7 @@ def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") -> Optio
         else:
             print("Error: OpenAI response structure is unexpected or empty.")
             return None
-    except OpenAIApiError as e:
+    except OpenAIApiError as e: # Assuming OpenAIApiError is the correct async error type
         print(f"OpenAI API Error: {e}")
         return None
     except Exception as e:
@@ -65,9 +73,9 @@ except ImportError:
     print("Warning: Google Generative AI library not installed. pip install google-generativeai")
     genai = None # type: ignore
 
-def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Optional[str]:
+async def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Optional[str]:
     """
-    Gets a response from the Google Gemini API.
+    Gets an asynchronous response from the Google Gemini API.
 
     Args:
         prompt: The prompt to send to the LLM.
@@ -87,8 +95,8 @@ def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Optional
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(model_name)
-        print(f"Sending prompt to Gemini model {model_name}...")
-        response = model.generate_content(prompt)
+        print(f"Sending prompt asynchronously to Gemini model {model_name}...")
+        response = await model.generate_content_async(prompt) # Use await and generate_content_async
         # Check if parts are available and then text
         if response.parts:
             return response.text # response.text is a shortcut for response.parts[0].text
@@ -112,35 +120,35 @@ def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Optional
         return None
 
 if __name__ == "__main__":
-    print("Testing llm_utils.py...")
+    print("Testing llm_utils.py (async)...")
     
     test_prompt = "Explain the concept of a Large Language Model in one sentence."
     print(f"\nTest Prompt: \"{test_prompt}\"")
 
     # Test OpenAI
-    print("\n--- Testing OpenAI ---")
+    print("\n--- Testing OpenAI (async) ---")
     if OPENAI_API_KEY:
         print("OPENAI_API_KEY found. Attempting to get response...")
     else:
         print("OPENAI_API_KEY not found. Expecting warning from function.")
     
-    openai_response = get_openai_response(test_prompt)
+    openai_response = asyncio.run(get_openai_response(test_prompt))
     if openai_response:
         print(f"OpenAI Response: {openai_response}")
     else:
         print("No response from OpenAI (or API key was missing/error occurred).")
 
     # Test Gemini
-    print("\n--- Testing Gemini ---")
+    print("\n--- Testing Gemini (async) ---")
     if GEMINI_API_KEY:
         print("GEMINI_API_KEY found. Attempting to get response...")
     else:
         print("GEMINI_API_KEY not found. Expecting warning from function.")
         
-    gemini_response = get_gemini_response(test_prompt)
+    gemini_response = asyncio.run(get_gemini_response(test_prompt))
     if gemini_response:
         print(f"Gemini Response: {gemini_response}")
     else:
         print("No response from Gemini (or API key was missing/error occurred).")
 
-    print("\nllm_utils.py test finished.")
+    print("\nllm_utils.py (async) test finished.")

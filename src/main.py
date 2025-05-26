@@ -1,6 +1,6 @@
 # src/main.py
 
-from src.graph_structure import app
+from src.graph import app
 from src.agents import AgentState
 
 if __name__ == "__main__":
