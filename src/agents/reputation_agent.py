@@ -6,6 +6,8 @@ from src.utils.llm_utils import get_openai_response # Added import
 from src.utils.models import SearchResultItem # Added import
 
 # Define the internal state for the Reputation Agent subgraph
+from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
+
 class ReputationAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
@@ -53,8 +55,16 @@ Return the queries as a numbered list, each query on a new line.
     return state
 
 def execute_reputation_search_node(state: ReputationAgentState) -> ReputationAgentState:
-    print("[ReputationAgent] Executing search for reputation...")
-    state['search_results'] = [{"title": "Reputation Result 1", "href": "rep_url1", "body": "Reputation Snippet 1"}]
+    print("[ReputationAgent] Executing search for reputation (placeholder)...")
+    # Dummy results for ReputationAgent
+    dummy_results = [
+        SearchResultItem(title="Jane Doe Public Praise for Charity Work", link="http://charitytimes.com/jane-doe-award", snippet="Jane Doe recognized for her significant contributions to local charities.", source_api="placeholder_rep"),
+        SearchResultItem(title="Controversy Over Innovate Inc. Environmental Impact", link="http://environmentnews.com/innovate-controversy", snippet="Innovate Inc., led by Jane Doe, faces criticism over environmental practices.", source_api="placeholder_rep"),
+        SearchResultItem(title="Jane Doe's Facebook Page", link="http://facebook.com/janedoeofficial", snippet="Official Facebook page of Jane Doe.", source_api="placeholder_rep"), # Blocked domain
+        SearchResultItem(title="Review of Jane Doe's Favorite Local Bakery", link="http://localfoodblog.com/bakery-review", snippet="A review of a bakery Jane Doe reportedly frequents.", source_api="placeholder_rep"), # Irrelevant
+        SearchResultItem(title="Jane Doe on Twitter", link="http://twitter.com/janedoe", snippet="Jane Doe's tweets on various topics.", source_api="placeholder_rep") # Blocked domain
+    ]
+    state['search_results'] = dummy_results
     return state
 
 def scrape_reputation_results_node(state: ReputationAgentState) -> ReputationAgentState:
@@ -72,18 +82,41 @@ def compile_reputation_report_node(state: ReputationAgentState) -> ReputationAge
     state['reputation_report'] = (state.get('reputation_report', "") + " Final reputation report compiled.").strip()
     return state
 
+async def filter_search_results_node(state: ReputationAgentState) -> ReputationAgentState:
+    agent_name = "ReputationAgent"
+    print(f"[{agent_name}] Filtering search results...")
+    current_results = state.get('search_results') or []
+    if not current_results:
+        print(f"[{agent_name}] No search results to filter.")
+        return state
+
+    profile_summary = state.get('input_profile_summary', '')
+    agent_specific_focus_description = "Public sentiment, media perception, awards, controversies, and overall reputation of the executive."
+
+    filtered_results = await filter_search_results_logic(
+        results=current_results,
+        profile_summary=profile_summary,
+        agent_query_focus=agent_specific_focus_description,
+        blocked_domains_list=DEFAULT_BLOCKED_DOMAINS
+    )
+    print(f"[{agent_name}] Original results: {len(current_results)}, Filtered results: {len(filtered_results)}")
+    state['search_results'] = filtered_results
+    return state
+
 # Instantiate and Build the Subgraph
 reputation_graph = StateGraph(ReputationAgentState)
 
 reputation_graph.add_node("generate_reputation_queries", generate_reputation_queries_node)
 reputation_graph.add_node("execute_search", execute_reputation_search_node)
+reputation_graph.add_node("filter_search_results", filter_search_results_node) # Added node
 reputation_graph.add_node("scrape_results", scrape_reputation_results_node)
 reputation_graph.add_node("analyze_data", analyze_reputation_data_node)
 reputation_graph.add_node("compile_report", compile_reputation_report_node)
 
 reputation_graph.set_entry_point("generate_reputation_queries")
 reputation_graph.add_edge("generate_reputation_queries", "execute_search")
-reputation_graph.add_edge("execute_search", "scrape_results")
+reputation_graph.add_edge("execute_search", "filter_search_results") # Changed edge
+reputation_graph.add_edge("filter_search_results", "scrape_results") # Added edge
 reputation_graph.add_edge("scrape_results", "analyze_data")
 reputation_graph.add_edge("analyze_data", "compile_report")
 reputation_graph.add_edge("compile_report", END)

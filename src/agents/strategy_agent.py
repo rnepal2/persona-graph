@@ -6,6 +6,8 @@ from src.utils.llm_utils import get_openai_response # Added import
 from src.utils.models import SearchResultItem # Added import
 
 # Define the internal state for the Strategy Agent subgraph
+from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
+
 class StrategyAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
@@ -53,8 +55,16 @@ Return the queries as a numbered list, each query on a new line.
     return state
 
 def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAgentState:
-    print("[StrategyAgent] Executing search for strategy...")
-    state['search_results'] = [{"title": "Strategy Result 1", "href": "strat_url1", "body": "Strategy Snippet 1"}]
+    print("[StrategyAgent] Executing search for strategy (placeholder)...")
+    # Dummy results for StrategyAgent
+    dummy_results = [
+        SearchResultItem(title="Jane Doe's Impact on Innovate Inc. Market Share", link="http://financialnews.com/innovate-market-share-doe", snippet="Analysis of market share growth under Jane Doe's strategic initiatives.", source_api="placeholder_strat"),
+        SearchResultItem(title="Innovate Inc. M&A Strategy Led by Jane Doe", link="http://mergerweekly.com/innovate-inc-ma-doe", snippet="Details of recent M&A activities directed by Jane Doe.", source_api="placeholder_strat"),
+        SearchResultItem(title="Jane Doe's Reddit AMA on Company Vision", link="http://reddit.com/r/IAmA/comments/janedoe_ama", snippet="Jane Doe answers questions about company vision on Reddit.", source_api="placeholder_strat"), # Blocked domain
+        SearchResultItem(title="Gardening Tips for Urban Dwellers", link="http://urbangarden.com/tips", snippet="How to grow vegetables in small city spaces.", source_api="placeholder_strat"), # Irrelevant
+        SearchResultItem(title="Jane Doe's Keynote on Future of Tech", link="http://techconference.com/jane-doe-keynote-summary", snippet="Summary of Jane Doe's keynote speech on future technology trends and company direction.", source_api="placeholder_strat")
+    ]
+    state['search_results'] = dummy_results
     return state
 
 def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAgentState:
@@ -72,18 +82,41 @@ def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAgentStat
     state['strategy_report'] = (state.get('strategy_report', "") + " Final strategy report compiled.").strip()
     return state
 
+async def filter_search_results_node(state: StrategyAgentState) -> StrategyAgentState:
+    agent_name = "StrategyAgent"
+    print(f"[{agent_name}] Filtering search results...")
+    current_results = state.get('search_results') or []
+    if not current_results:
+        print(f"[{agent_name}] No search results to filter.")
+        return state
+
+    profile_summary = state.get('input_profile_summary', '')
+    agent_specific_focus_description = "Strategic contributions, business impact, M&A activity, product leadership, measurable business results, and boardroom influence."
+
+    filtered_results = await filter_search_results_logic(
+        results=current_results,
+        profile_summary=profile_summary,
+        agent_query_focus=agent_specific_focus_description,
+        blocked_domains_list=DEFAULT_BLOCKED_DOMAINS
+    )
+    print(f"[{agent_name}] Original results: {len(current_results)}, Filtered results: {len(filtered_results)}")
+    state['search_results'] = filtered_results
+    return state
+
 # Instantiate and Build the Subgraph
 strategy_graph = StateGraph(StrategyAgentState)
 
 strategy_graph.add_node("generate_strategy_queries", generate_strategy_queries_node)
 strategy_graph.add_node("execute_search", execute_strategy_search_node)
+strategy_graph.add_node("filter_search_results", filter_search_results_node) # Added node
 strategy_graph.add_node("scrape_results", scrape_strategy_results_node)
 strategy_graph.add_node("analyze_data", analyze_strategy_data_node)
 strategy_graph.add_node("compile_report", compile_strategy_report_node)
 
 strategy_graph.set_entry_point("generate_strategy_queries")
 strategy_graph.add_edge("generate_strategy_queries", "execute_search")
-strategy_graph.add_edge("execute_search", "scrape_results")
+strategy_graph.add_edge("execute_search", "filter_search_results") # Changed edge
+strategy_graph.add_edge("filter_search_results", "scrape_results") # Added edge
 strategy_graph.add_edge("scrape_results", "analyze_data")
 strategy_graph.add_edge("analyze_data", "compile_report")
 strategy_graph.add_edge("compile_report", END)

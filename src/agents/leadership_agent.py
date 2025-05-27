@@ -6,6 +6,8 @@ from src.utils.llm_utils import get_openai_response # Added import
 from src.utils.models import SearchResultItem # Added import
 
 # Define the internal state for the Leadership Agent subgraph
+from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
+
 class LeadershipAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
@@ -53,8 +55,16 @@ Return the queries as a numbered list, each query on a new line.
     return state
 
 def execute_search_node(state: LeadershipAgentState) -> LeadershipAgentState:
-    print("[LeadershipAgent] Executing search...")
-    state['search_results'] = [{"title": "Result 1", "href": "url1", "body": "Snippet 1"}]
+    print("[LeadershipAgent] Executing search (placeholder)...")
+    # Dummy results for LeadershipAgent
+    dummy_results = [
+        SearchResultItem(title="Jane Doe's Visionary Leadership at Innovate Inc.", link="http://businessnews.com/jane-doe-visionary", snippet="An article detailing Jane Doe's leadership style and strategic decisions.", source_api="placeholder_ldr"),
+        SearchResultItem(title="Interview with Jane Doe on Team Building", link="http://leadershiptoday.com/jane-doe-interview", snippet="Jane Doe discusses her approach to team building and mentorship.", source_api="placeholder_ldr"),
+        SearchResultItem(title="Jane Doe's Management Philosophy (LinkedIn Article)", link="http://linkedin.com/pulse/jane-doe-management", snippet="Jane Doe shares her thoughts on management on LinkedIn.", source_api="placeholder_ldr"), # Blocked domain
+        SearchResultItem(title="Top 10 Recipes for Summer BBQs", link="http://foodblog.com/summer-bbq", snippet="Delicious recipes for your next barbecue.", source_api="placeholder_ldr"), # Irrelevant
+        SearchResultItem(title="Critique of Innovate Inc.'s Recent Strategy", link="http://marketanalysis.com/innovate-critique", snippet="Analysis of Innovate Inc.'s strategy, mentioning Jane Doe's decisions.", source_api="placeholder_ldr")
+    ]
+    state['search_results'] = dummy_results
     return state
 
 def scrape_results_node(state: LeadershipAgentState) -> LeadershipAgentState:
@@ -80,18 +90,41 @@ def compile_report_node(state: LeadershipAgentState) -> LeadershipAgentState:
     print("[LeadershipAgent] Added item to its metadata.") # For logging
     return state
 
+async def filter_search_results_node(state: LeadershipAgentState) -> LeadershipAgentState:
+    agent_name = "LeadershipAgent"
+    print(f"[{agent_name}] Filtering search results...")
+    current_results = state.get('search_results') or []
+    if not current_results:
+        print(f"[{agent_name}] No search results to filter.")
+        return state
+
+    profile_summary = state.get('input_profile_summary', '')
+    agent_specific_focus_description = "Leadership style, decision-making approaches, management philosophy, team interactions, and public commentary on leadership."
+
+    filtered_results = await filter_search_results_logic(
+        results=current_results,
+        profile_summary=profile_summary,
+        agent_query_focus=agent_specific_focus_description,
+        blocked_domains_list=DEFAULT_BLOCKED_DOMAINS
+    )
+    print(f"[{agent_name}] Original results: {len(current_results)}, Filtered results: {len(filtered_results)}")
+    state['search_results'] = filtered_results
+    return state
+
 # Instantiate and Build the Subgraph
 leadership_graph = StateGraph(LeadershipAgentState)
 
 leadership_graph.add_node("generate_leadership_queries", generate_leadership_queries_node)
 leadership_graph.add_node("execute_search", execute_search_node)
+leadership_graph.add_node("filter_search_results", filter_search_results_node) # Added node
 leadership_graph.add_node("scrape_results", scrape_results_node)
 leadership_graph.add_node("analyze_data", analyze_data_node)
 leadership_graph.add_node("compile_report", compile_report_node)
 
 leadership_graph.set_entry_point("generate_leadership_queries")
 leadership_graph.add_edge("generate_leadership_queries", "execute_search")
-leadership_graph.add_edge("execute_search", "scrape_results")
+leadership_graph.add_edge("execute_search", "filter_search_results") # Changed edge
+leadership_graph.add_edge("filter_search_results", "scrape_results") # Added edge
 leadership_graph.add_edge("scrape_results", "analyze_data")
 leadership_graph.add_edge("analyze_data", "compile_report")
 leadership_graph.add_edge("compile_report", END)

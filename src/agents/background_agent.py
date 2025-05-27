@@ -6,6 +6,8 @@ from src.utils.llm_utils import get_openai_response # Added import
 from src.utils.models import SearchResultItem # Added import
 
 # Define BackgroundAgentState
+from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
+
 class BackgroundAgentState(TypedDict):
     input_profile_summary: str # Likely from parent, could include LinkedIn URL or other initial pointers
     linkedin_url: Optional[str]
@@ -86,8 +88,17 @@ Example:
     return state
 
 def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAgentState:
-    print("[BackgroundAgent] Executing background search...")
-    state['search_results'] = [{"title": "Background Result 1", "href": "bg_url1", "body": "Background Snippet 1"}]
+    print("[BackgroundAgent] Executing background search (placeholder)...")
+    # Dummy results to test filtering for background agent
+    dummy_results = [
+        SearchResultItem(title="John Doe Education History - University XYZ", link="http://example.edu/johndoe-alumni", snippet="John Doe graduated with a BS in Computer Science.", source_api="placeholder_bg"),
+        SearchResultItem(title="John Doe's Early Career at OldCorp", link="http://newsarchive.com/johndoe-oldcorp-role", snippet="Details about John Doe's first major role.", source_api="placeholder_bg"),
+        SearchResultItem(title="Funny Cat Videos by John Doe", link="http://youtube.com/watch?v=johndoecats", snippet="John Doe's personal cat video channel.", source_api="placeholder_bg"),
+        SearchResultItem(title="Latest advancements in unrelated Quantum Physics", link="http://physicsworld.com/quantum-breakthrough", snippet="A new discovery in quantum entanglement.", source_api="placeholder_bg"),
+        SearchResultItem(title="John Doe - LinkedIn Profile", link="http://linkedin.com/in/johndoe-profile", snippet="Professional profile of John Doe.", source_api="placeholder_bg")
+    ]
+    state['search_results'] = dummy_results
+    # print(f"[BackgroundAgent] Populated search_results with {len(dummy_results)} dummy items.")
     return state
     
 def scrape_background_results_node(state: BackgroundAgentState) -> BackgroundAgentState:
@@ -107,19 +118,43 @@ def compile_background_details_node(state: BackgroundAgentState) -> BackgroundAg
     state['metadata'].append({"source": "BackgroundAgent", "info": "Compiled background details"})
     return state
 
+async def filter_search_results_node(state: BackgroundAgentState) -> BackgroundAgentState:
+    agent_name = "BackgroundAgent"
+    print(f"[{agent_name}] Filtering search results...")
+    current_results = state.get('search_results') or []
+    if not current_results:
+        print(f"[{agent_name}] No search results to filter.")
+        return state
+
+    profile_summary = state.get('input_profile_summary', '')
+    # Define a specific focus for this agent to guide the LLM in relevance assessment
+    agent_specific_focus_description = "Comprehensive background information including education, early career history, affiliations, geographic moves, and origin stories."
+
+    filtered_results = await filter_search_results_logic(
+        results=current_results,
+        profile_summary=profile_summary,
+        agent_query_focus=agent_specific_focus_description,
+        blocked_domains_list=DEFAULT_BLOCKED_DOMAINS # Using the default list
+    )
+    print(f"[{agent_name}] Original results: {len(current_results)}, Filtered results: {len(filtered_results)}")
+    state['search_results'] = filtered_results
+    return state
+
 # Instantiate and Build the Subgraph
 background_graph = StateGraph(BackgroundAgentState)
 
 background_graph.add_node("process_initial_input", process_initial_input_node)
 background_graph.add_node("generate_background_queries", generate_background_queries_node)
 background_graph.add_node("execute_search", execute_background_search_node)
+background_graph.add_node("filter_search_results", filter_search_results_node) # Added node
 background_graph.add_node("scrape_results", scrape_background_results_node)
 background_graph.add_node("compile_details", compile_background_details_node)
 
 background_graph.set_entry_point("process_initial_input")
 background_graph.add_edge("process_initial_input", "generate_background_queries")
 background_graph.add_edge("generate_background_queries", "execute_search")
-background_graph.add_edge("execute_search", "scrape_results")
+background_graph.add_edge("execute_search", "filter_search_results") # Changed edge
+background_graph.add_edge("filter_search_results", "scrape_results") # Added edge
 background_graph.add_edge("scrape_results", "compile_details")
 background_graph.add_edge("compile_details", END)
 
