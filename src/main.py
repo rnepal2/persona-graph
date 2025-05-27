@@ -1,5 +1,6 @@
 # src/main.py
 
+import asyncio # Added for asyncio.run
 from src.graph import app
 from src.agents import AgentState
 
@@ -27,7 +28,8 @@ if __name__ == "__main__":
     
     # final_state = app.invoke(initial_input, config=stream_config)
     # For now, let's use a simple invoke without explicit config unless needed
-    final_state = app.invoke(initial_input)
+    # final_state = app.invoke(initial_input) # Synchronous invoke
+    final_state = asyncio.run(app.ainvoke(initial_input)) # Asynchronous invoke
 
 
     print("\n--- PersonaGraph Execution Finished ---")

@@ -3,13 +3,14 @@ from typing import TypedDict, List, Optional, Dict, Any
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # For the wrapper node that will be added later in this file
 from src.utils.llm_utils import get_openai_response # Added import
+from src.utils.models import SearchResultItem # Added import
 
 # Define BackgroundAgentState
 class BackgroundAgentState(TypedDict):
     input_profile_summary: str # Likely from parent, could include LinkedIn URL or other initial pointers
     linkedin_url: Optional[str]
     generated_queries: Optional[List[str]]
-    search_results: Optional[List[Dict[str, str]]]
+    search_results: Optional[List[SearchResultItem]] # Updated type hint
     scraped_data: Optional[List[str]]
     # For structured background info like education, early career, affiliations
     background_details: Optional[Dict[str, Any]]
@@ -110,14 +111,14 @@ def compile_background_details_node(state: BackgroundAgentState) -> BackgroundAg
 background_graph = StateGraph(BackgroundAgentState)
 
 background_graph.add_node("process_initial_input", process_initial_input_node)
-background_graph.add_node("generate_queries", generate_background_queries_node)
+background_graph.add_node("generate_background_queries", generate_background_queries_node)
 background_graph.add_node("execute_search", execute_background_search_node)
 background_graph.add_node("scrape_results", scrape_background_results_node)
 background_graph.add_node("compile_details", compile_background_details_node)
 
 background_graph.set_entry_point("process_initial_input")
-background_graph.add_edge("process_initial_input", "generate_queries")
-background_graph.add_edge("generate_queries", "execute_search")
+background_graph.add_edge("process_initial_input", "generate_background_queries")
+background_graph.add_edge("generate_background_queries", "execute_search")
 background_graph.add_edge("execute_search", "scrape_results")
 background_graph.add_edge("scrape_results", "compile_details")
 background_graph.add_edge("compile_details", END)
@@ -127,7 +128,7 @@ background_subgraph_app = background_graph.compile()
 # AgentState should be imported from .common_state
 # BackgroundAgentState and background_subgraph_app are defined above in this file.
 
-def background_agent_node(state: AgentState) -> AgentState:
+async def background_agent_node(state: AgentState) -> AgentState: # Changed to async def
     print("[MainGraph] Calling BackgroundAgent subgraph...")
 
     # 1. Transform parent state to initial subgraph state
@@ -150,11 +151,11 @@ def background_agent_node(state: AgentState) -> AgentState:
     # 2. Invoke the subgraph
     try:
         print(f"[BackgroundAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = background_subgraph_app.invoke(initial_subgraph_state)
+        subgraph_final_state = await background_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
         print(f"[BackgroundAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
     except Exception as e:
         print(f"[BackgroundAgentWrapper] Error invoking subgraph: {e}")
-        state['error_message'] = (state.get('error_message', '') + f" BackgroundAgent failed: {e}").strip()
+        state['error_message'] = ((state.get('error_message') or '') + f" BackgroundAgent failed: {e}").strip()
         subgraph_final_state = None
 
     # 3. Transform subgraph result back to parent state
@@ -164,7 +165,7 @@ def background_agent_node(state: AgentState) -> AgentState:
         subgraph_generated_metadata = subgraph_final_state.get("metadata")
 
         if subgraph_error:
-            state['error_message'] = (state.get('error_message', '') + f" BackgroundSubgraphError: {subgraph_error}").strip()
+            state['error_message'] = ((state.get('error_message') or '') + f" BackgroundSubgraphError: {subgraph_error}").strip()
             print(f"[BackgroundAgentWrapper] Subgraph reported an error: {subgraph_error}")
 
         if details:
@@ -174,7 +175,7 @@ def background_agent_node(state: AgentState) -> AgentState:
             print("[BackgroundAgentWrapper] No background_details found in subgraph final state.")
             # Do not overwrite a more specific error from the subgraph itself
             if not subgraph_error:
-                 state['error_message'] = (state.get('error_message', '') + " BackgroundAgent: No background details generated.").strip()
+                 state['error_message'] = ((state.get('error_message') or '') + " BackgroundAgent: No background details generated.").strip()
         
         if subgraph_generated_metadata:
             state['metadata'] = subgraph_generated_metadata # Assign the list from subgraph (which includes original + new)
@@ -183,7 +184,7 @@ def background_agent_node(state: AgentState) -> AgentState:
 
     else: # Handles case where subgraph_final_state itself is None due to exception
         if not state.get('error_message'): # Don't overwrite specific exception message
-             state['error_message'] = (state.get('error_message', '') + " BackgroundAgent: Subgraph invocation failed critically.").strip()
+             state['error_message'] = ((state.get('error_message') or '') + " BackgroundAgent: Subgraph invocation failed critically.").strip()
         # In this case, state['metadata'] would still hold the original list passed as a copy
 
     # 4. Set next agent in parent graph

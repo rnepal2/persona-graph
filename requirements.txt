@@ -6,3 +6,5 @@ duckduckgo-search
 beautifulsoup4
 requests
 python-dotenv
+google-search-results
+tavily-python

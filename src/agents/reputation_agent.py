@@ -3,12 +3,13 @@ from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # Assuming this will be needed by the wrapper later
 from src.utils.llm_utils import get_openai_response # Added import
+from src.utils.models import SearchResultItem # Added import
 
 # Define the internal state for the Reputation Agent subgraph
 class ReputationAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
-    search_results: Optional[List[Dict[str, str]]]
+    search_results: Optional[List[SearchResultItem]] # Updated type hint
     scraped_data: Optional[List[str]]
     reputation_report: Optional[str]
     error_message: Optional[str]
@@ -74,14 +75,14 @@ def compile_reputation_report_node(state: ReputationAgentState) -> ReputationAge
 # Instantiate and Build the Subgraph
 reputation_graph = StateGraph(ReputationAgentState)
 
-reputation_graph.add_node("generate_queries", generate_reputation_queries_node)
+reputation_graph.add_node("generate_reputation_queries", generate_reputation_queries_node)
 reputation_graph.add_node("execute_search", execute_reputation_search_node)
 reputation_graph.add_node("scrape_results", scrape_reputation_results_node)
 reputation_graph.add_node("analyze_data", analyze_reputation_data_node)
 reputation_graph.add_node("compile_report", compile_reputation_report_node)
 
-reputation_graph.set_entry_point("generate_queries")
-reputation_graph.add_edge("generate_queries", "execute_search")
+reputation_graph.set_entry_point("generate_reputation_queries")
+reputation_graph.add_edge("generate_reputation_queries", "execute_search")
 reputation_graph.add_edge("execute_search", "scrape_results")
 reputation_graph.add_edge("scrape_results", "analyze_data")
 reputation_graph.add_edge("analyze_data", "compile_report")
@@ -90,7 +91,7 @@ reputation_graph.add_edge("compile_report", END)
 reputation_subgraph_app = reputation_graph.compile()
 
 # Wrapper node for the ReputationAgent subgraph
-def reputation_agent_node(state: AgentState) -> AgentState:
+async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to async def
     print("[MainGraph] Calling ReputationAgent subgraph...")
 
     # 1. Transform parent state to initial subgraph state
@@ -112,11 +113,11 @@ def reputation_agent_node(state: AgentState) -> AgentState:
     # 2. Invoke the subgraph
     try:
         print(f"[ReputationAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = reputation_subgraph_app.invoke(initial_subgraph_state)
+        subgraph_final_state = await reputation_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
         print(f"[ReputationAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
     except Exception as e:
         print(f"[ReputationAgentWrapper] Error invoking subgraph: {e}")
-        state['error_message'] = (state.get('error_message', '') + f" ReputationAgent failed: {e}").strip()
+        state['error_message'] = ((state.get('error_message') or '') + f" ReputationAgent failed: {e}").strip()
         subgraph_final_state = None
 
     # 3. Transform subgraph result back to parent state
@@ -125,7 +126,7 @@ def reputation_agent_node(state: AgentState) -> AgentState:
         subgraph_error = subgraph_final_state.get("error_message")
 
         if subgraph_error:
-            state['error_message'] = (state.get('error_message', '') + f" ReputationSubgraphError: {subgraph_error}").strip()
+            state['error_message'] = ((state.get('error_message') or '') + f" ReputationSubgraphError: {subgraph_error}").strip()
             print(f"[ReputationAgentWrapper] Subgraph reported an error: {subgraph_error}")
 
         if report:
@@ -135,10 +136,10 @@ def reputation_agent_node(state: AgentState) -> AgentState:
         else:
             print("[ReputationAgentWrapper] No report found in subgraph final state.")
             if not subgraph_error:
-                 state['error_message'] = (state.get('error_message', '') + " ReputationAgent: No report generated.").strip()
+                 state['error_message'] = ((state.get('error_message') or '') + " ReputationAgent: No report generated.").strip()
     else:
         if not state.get('error_message'):
-             state['error_message'] = (state.get('error_message', '') + " ReputationAgent: Subgraph invocation failed critically.").strip()
+             state['error_message'] = ((state.get('error_message') or '') + " ReputationAgent: Subgraph invocation failed critically.").strip()
 
     # Merge metadata from subgraph back to parent state
     if subgraph_final_state and subgraph_final_state.get("metadata") is not None: # Check if metadata exists and is not None

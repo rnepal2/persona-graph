@@ -3,12 +3,13 @@ from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # For the wrapper node later
 from src.utils.llm_utils import get_openai_response # Added import
+from src.utils.models import SearchResultItem # Added import
 
 # Define the internal state for the Strategy Agent subgraph
 class StrategyAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
-    search_results: Optional[List[Dict[str, str]]]
+    search_results: Optional[List[SearchResultItem]] # Updated type hint
     scraped_data: Optional[List[str]]
     strategy_report: Optional[str]
     error_message: Optional[str]
@@ -74,14 +75,14 @@ def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAgentStat
 # Instantiate and Build the Subgraph
 strategy_graph = StateGraph(StrategyAgentState)
 
-strategy_graph.add_node("generate_queries", generate_strategy_queries_node)
+strategy_graph.add_node("generate_strategy_queries", generate_strategy_queries_node)
 strategy_graph.add_node("execute_search", execute_strategy_search_node)
 strategy_graph.add_node("scrape_results", scrape_strategy_results_node)
 strategy_graph.add_node("analyze_data", analyze_strategy_data_node)
 strategy_graph.add_node("compile_report", compile_strategy_report_node)
 
-strategy_graph.set_entry_point("generate_queries")
-strategy_graph.add_edge("generate_queries", "execute_search")
+strategy_graph.set_entry_point("generate_strategy_queries")
+strategy_graph.add_edge("generate_strategy_queries", "execute_search")
 strategy_graph.add_edge("execute_search", "scrape_results")
 strategy_graph.add_edge("scrape_results", "analyze_data")
 strategy_graph.add_edge("analyze_data", "compile_report")
@@ -90,7 +91,7 @@ strategy_graph.add_edge("compile_report", END)
 strategy_subgraph_app = strategy_graph.compile()
 
 # Wrapper node for the StrategyAgent subgraph
-def strategy_agent_node(state: AgentState) -> AgentState:
+async def strategy_agent_node(state: AgentState) -> AgentState: # Changed to async def
     print("[MainGraph] Calling StrategyAgent subgraph...")
 
     # 1. Transform parent state to initial subgraph state
@@ -112,11 +113,11 @@ def strategy_agent_node(state: AgentState) -> AgentState:
     # 2. Invoke the subgraph
     try:
         print(f"[StrategyAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = strategy_subgraph_app.invoke(initial_subgraph_state)
+        subgraph_final_state = await strategy_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
         print(f"[StrategyAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
     except Exception as e:
         print(f"[StrategyAgentWrapper] Error invoking subgraph: {e}")
-        state['error_message'] = (state.get('error_message', '') + f" StrategyAgent failed: {e}").strip()
+        state['error_message'] = ((state.get('error_message') or '') + f" StrategyAgent failed: {e}").strip()
         subgraph_final_state = None
 
     # 3. Transform subgraph result back to parent state
@@ -125,7 +126,7 @@ def strategy_agent_node(state: AgentState) -> AgentState:
         subgraph_error = subgraph_final_state.get("error_message")
 
         if subgraph_error:
-            state['error_message'] = (state.get('error_message', '') + f" StrategySubgraphError: {subgraph_error}").strip()
+            state['error_message'] = ((state.get('error_message') or '') + f" StrategySubgraphError: {subgraph_error}").strip()
             print(f"[StrategyAgentWrapper] Subgraph reported an error: {subgraph_error}")
 
         if report:
@@ -135,10 +136,10 @@ def strategy_agent_node(state: AgentState) -> AgentState:
         else:
             print("[StrategyAgentWrapper] No report found in subgraph final state.")
             if not subgraph_error:
-                 state['error_message'] = (state.get('error_message', '') + " StrategyAgent: No report generated.").strip()
+                 state['error_message'] = ((state.get('error_message') or '') + " StrategyAgent: No report generated.").strip()
     else:
         if not state.get('error_message'): # Don't overwrite specific exception message
-             state['error_message'] = (state.get('error_message', '') + " StrategyAgent: Subgraph invocation failed critically.").strip()
+             state['error_message'] = ((state.get('error_message') or '') + " StrategyAgent: Subgraph invocation failed critically.").strip()
 
     # Merge metadata from subgraph back to parent state
     if subgraph_final_state and subgraph_final_state.get("metadata") is not None: # Check if metadata exists and is not None

@@ -3,12 +3,13 @@ from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # This will eventually be removed or changed when LeadershipAgent becomes a subgraph
 from src.utils.llm_utils import get_openai_response # Added import
+from src.utils.models import SearchResultItem # Added import
 
 # Define the internal state for the Leadership Agent subgraph
 class LeadershipAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
-    search_results: Optional[List[Dict[str, str]]] # Assuming search results are dicts with string values
+    search_results: Optional[List[SearchResultItem]] # Updated type hint
     scraped_data: Optional[List[str]]
     leadership_report: Optional[str]
     error_message: Optional[str]
@@ -82,14 +83,14 @@ def compile_report_node(state: LeadershipAgentState) -> LeadershipAgentState:
 # Instantiate and Build the Subgraph
 leadership_graph = StateGraph(LeadershipAgentState)
 
-leadership_graph.add_node("generate_queries", generate_leadership_queries_node) # Temp, will be updated later
+leadership_graph.add_node("generate_leadership_queries", generate_leadership_queries_node)
 leadership_graph.add_node("execute_search", execute_search_node)
 leadership_graph.add_node("scrape_results", scrape_results_node)
 leadership_graph.add_node("analyze_data", analyze_data_node)
 leadership_graph.add_node("compile_report", compile_report_node)
 
-leadership_graph.set_entry_point("generate_queries") # Temp, will be updated later
-leadership_graph.add_edge("generate_queries", "execute_search") # Temp, will be updated later
+leadership_graph.set_entry_point("generate_leadership_queries")
+leadership_graph.add_edge("generate_leadership_queries", "execute_search")
 leadership_graph.add_edge("execute_search", "scrape_results")
 leadership_graph.add_edge("scrape_results", "analyze_data")
 leadership_graph.add_edge("analyze_data", "compile_report")
@@ -98,7 +99,7 @@ leadership_graph.add_edge("compile_report", END)
 leadership_subgraph_app = leadership_graph.compile()
 
 # Wrapper node for the LeadershipAgent subgraph
-def leadership_agent_node(state: AgentState) -> AgentState:
+async def leadership_agent_node(state: AgentState) -> AgentState: # Changed to async def
     print("[MainGraph] Calling LeadershipAgent subgraph...")
 
     # 1. Transform parent state to initial subgraph state
@@ -132,12 +133,12 @@ def leadership_agent_node(state: AgentState) -> AgentState:
     try:
         print(f"[LeadershipAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
         # Note: Invoke expects a dict, TypedDict is a dict at runtime. Ensure it's a plain dict for invoke.
-        subgraph_final_state = leadership_subgraph_app.invoke(initial_subgraph_state) # Pass TypedDict directly
+        subgraph_final_state = await leadership_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
         print(f"[LeadershipAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
     except Exception as e:
         print(f"[LeadershipAgentWrapper] Error invoking subgraph: {e}")
         # Handle error: update parent state with error message
-        state['error_message'] = f"LeadershipAgent failed: {e}"
+        state['error_message'] = ((state.get('error_message') or '') + f" LeadershipAgent failed: {e}").strip()
         # subgraph_final_state will remain None or be the partial state if the subgraph handles errors internally
 
     # 3. Transform subgraph result back to parent state
@@ -146,7 +147,7 @@ def leadership_agent_node(state: AgentState) -> AgentState:
         subgraph_error = subgraph_final_state.get("error_message")
 
         if subgraph_error:
-            state['error_message'] = (state.get('error_message', '') + f" LeadershipSubgraphError: {subgraph_error}").strip()
+            state['error_message'] = ((state.get('error_message') or '') + f" LeadershipSubgraphError: {subgraph_error}").strip()
             print(f"[LeadershipAgentWrapper] Subgraph reported an error: {subgraph_error}")
 
 
@@ -161,11 +162,11 @@ def leadership_agent_node(state: AgentState) -> AgentState:
             print("[LeadershipAgentWrapper] No report found in subgraph final state.")
             # Optionally add a placeholder if no report, or handle as error
             if not subgraph_error: # Avoid overwriting a more specific error
-                 state['error_message'] = (state.get('error_message', '') + " LeadershipAgent: No report generated.").strip()
+                 state['error_message'] = ((state.get('error_message') or '') + " LeadershipAgent: No report generated.").strip()
 
     else: # Handles case where subgraph_final_state itself is None due to an exception during invoke
         if not state.get('error_message'): # Don't overwrite specific exception message from invoke's except block
-            state['error_message'] = (state.get('error_message', '') + " LeadershipAgent: Subgraph invocation failed critically or returned None.").strip()
+            state['error_message'] = ((state.get('error_message') or '') + " LeadershipAgent: Subgraph invocation failed critically or returned None.").strip()
 
         # Also handle metadata if subgraph_final_state is None
         # Though typically metadata wouldn't be generated if the subgraph fails critically

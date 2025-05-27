@@ -28,12 +28,13 @@ except ImportError:
         AsyncOpenAI = None # type: ignore
         OpenAIApiError = None # type: ignore
 
-async def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") -> Optional[str]:
+async def get_openai_response(prompt: str, system_prompt: Optional[str] = None, model_name: str = "gpt-3.5-turbo") -> Optional[str]:
     """
     Gets an asynchronous response from the OpenAI API.
 
     Args:
-        prompt: The prompt to send to the LLM.
+        prompt: The user prompt to send to the LLM.
+        system_prompt: An optional system-level prompt to guide the LLM's behavior.
         model_name: The OpenAI model name to use (e.g., "gpt-3.5-turbo", "gpt-4").
 
     Returns:
@@ -49,10 +50,16 @@ async def get_openai_response(prompt: str, model_name: str = "gpt-3.5-turbo") ->
 
     try:
         client = AsyncOpenAI(api_key=OPENAI_API_KEY) # Use AsyncOpenAI
+        
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        
         print(f"Sending prompt asynchronously to OpenAI model {model_name}...")
         response = await client.chat.completions.create( # Use await
             model=model_name,
-            messages=[{"role": "user", "content": prompt}]
+            messages=messages
         )
         if response.choices and response.choices[0].message:
             return response.choices[0].message.content
@@ -122,8 +129,10 @@ async def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Op
 if __name__ == "__main__":
     print("Testing llm_utils.py (async)...")
     
-    test_prompt = "Explain the concept of a Large Language Model in one sentence."
-    print(f"\nTest Prompt: \"{test_prompt}\"")
+    test_user_prompt = "Explain the concept of a Large Language Model in one sentence."
+    test_system_prompt = "You are a helpful AI assistant."
+    print(f"\nTest User Prompt: \"{test_user_prompt}\"")
+    print(f"Test System Prompt: \"{test_system_prompt}\"")
 
     # Test OpenAI
     print("\n--- Testing OpenAI (async) ---")
@@ -132,7 +141,7 @@ if __name__ == "__main__":
     else:
         print("OPENAI_API_KEY not found. Expecting warning from function.")
     
-    openai_response = asyncio.run(get_openai_response(test_prompt))
+    openai_response = asyncio.run(get_openai_response(test_user_prompt, system_prompt=test_system_prompt))
     if openai_response:
         print(f"OpenAI Response: {openai_response}")
     else:

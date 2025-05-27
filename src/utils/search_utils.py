@@ -2,26 +2,28 @@
 
 import asyncio # For asyncio.to_thread
 from duckduckgo_search import DDGS
-from typing import List, Dict
+from typing import List, Dict, Optional # Added Optional
+from pydantic import ValidationError # For handling Pydantic errors
 
 # Conceptual: Import API key from config.
 # Although DDGS().text might not require it, other features or engines might.
 from src.config import DUCKDUCKGO_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY # Ensure config loading
+from src.utils.models import SearchResultItem # Added import
 
-async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[Dict[str, str]]:
+async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[SearchResultItem]:
     """
     Performs an asynchronous web search using DuckDuckGo (via asyncio.to_thread) 
-    and returns a list of results.
+    and returns a list of SearchResultItem objects.
 
     Args:
         query: The search query string.
         max_results: The maximum number of results to return.
 
     Returns:
-        A list of dictionaries, where each dictionary contains 'title', 'href', and 'body' of a search result.
-        Returns an empty list if an error occurs.
+        A list of SearchResultItem objects.
+        Returns an empty list if an error occurs or no valid results are found.
     """
-    results: List[Dict[str, str]] = []
+    parsed_results: List[SearchResultItem] = []
     
     # Conceptual: Placeholder for using DUCKDUCKGO_API_KEY if the library/feature required it
     # if not DUCKDUCKGO_API_KEY:
@@ -33,34 +35,37 @@ async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[Di
 
     try:
         print(f"Performing asynchronous DuckDuckGo search (via to_thread) for: '{query}' with max_results={max_results}")
-        # Wrap the synchronous ddgs.text() call in asyncio.to_thread
-        # Note: DDGS().text() returns a generator, so the list conversion is important if that's what's expected.
-        # However, the original code iterated over ddgs_results directly.
-        # If ddgs.text is a generator, to_thread will run the generator to completion in the thread.
-        # The result `raw_results` here would be the list if the generator is exhausted by `text` itself,
-        # or it would be the generator object if `text` just returns it.
-        # The `duckduckgo_search` library's `text` method actually returns a list directly when max_results is set.
         raw_results = await asyncio.to_thread(ddgs.text, keywords=query, max_results=max_results)
         
         if raw_results:
-            for result in raw_results:
-                # Ensure result is a dictionary and has the expected keys
-                if isinstance(result, dict) and all(k in result for k in ['title', 'href', 'body']):
-                    results.append({
-                        'title': result['title'],
-                        'href': result['href'],
-                        'body': result['body']
-                    })
-                else:
-                    print(f"Warning: Skipping malformed search result: {result}")
+            for res_dict in raw_results:
+                try:
+                    link_url = res_dict.get('href')
+                    if not link_url:
+                        print(f"[perform_duckduckgo_search] Warning: Result missing 'href'. Skipping: {res_dict.get('title')}")
+                        continue
+
+                    search_item = SearchResultItem(
+                        title=res_dict.get('title', 'No Title Provided'),
+                        link=link_url, 
+                        snippet=res_dict.get('body'), # 'body' from DDGS maps to 'snippet'
+                        source_api="duckduckgo",
+                        content=None, # DDGS text search doesn't provide full page content
+                        raw_result=dict(res_dict) 
+                    )
+                    parsed_results.append(search_item)
+                except ValidationError as ve:
+                    print(f"[perform_duckduckgo_search] Pydantic validation error for result: {res_dict}. Error: {ve}. Skipping.")
+                except Exception as e: 
+                    print(f"[perform_duckduckgo_search] Error parsing result: {res_dict}. Error: {e}. Skipping.")
         else:
             print("No results returned from ddgs.text via to_thread")
             
     except Exception as e:
         print(f"Error during asynchronous DuckDuckGo search (via to_thread): {e}")
-        # results will remain an empty list
+        # parsed_results will remain an empty list
     
-    return results
+    return parsed_results
 
 if __name__ == "__main__":
     print("Testing search_utils.py (async with to_thread)...")
@@ -75,15 +80,18 @@ if __name__ == "__main__":
     print(f"\nPerforming search for query: '{sample_query}'")
     
     # Update to use asyncio.run for the async function
-    search_results = asyncio.run(perform_duckduckgo_search(query=sample_query, max_results=3)) # Use specified max_results=3
+    search_results_items = asyncio.run(perform_duckduckgo_search(query=sample_query, max_results=3)) 
     
-    if search_results:
-        print(f"\nFound {len(search_results)} results (async to_thread):")
-        for i, res in enumerate(search_results, 1):
-            print(f"\nResult {i}:")
-            print(f"  Title: {res['title']}")
-            print(f"  URL: {res['href']}")
-            print(f"  Snippet: {res['body']}")
+    if search_results_items:
+        print(f"\nFound {len(search_results_items)} results (async to_thread):")
+        for i, item in enumerate(search_results_items, 1):
+            print(f"\nResult {i} (SearchResultItem):")
+            print(item.model_dump_json(indent=2))
+            # Or print specific fields:
+            # print(f"  Title: {item.title}")
+            # print(f"  URL: {item.link}")
+            # print(f"  Snippet: {item.snippet}")
+            # print(f"  Source: {item.source_api}")
     else:
         print("No search results found or an error occurred.")
 
