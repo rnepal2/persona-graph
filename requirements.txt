@@ -8,3 +8,5 @@ requests
 python-dotenv
 google-search-results
 tavily-python
+selenium
+playwright
