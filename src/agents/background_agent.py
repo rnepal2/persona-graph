@@ -1,12 +1,19 @@
 # src/agents/background_agent.py
 from typing import TypedDict, List, Optional, Dict, Any
-from langgraph.graph import StateGraph, END
-from .common_state import AgentState # For the wrapper node that will be added later in this file
-from src.utils.llm_utils import get_openai_response # Added import
-from src.utils.models import SearchResultItem # Added import
+import asyncio
 
-# Define BackgroundAgentState
-from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
+TEST_MODE = True # Defined at the top of the file
+
+from langgraph.graph import StateGraph, END
+from .common_state import AgentState
+from src.utils.llm_utils import get_openai_response
+from src.utils.models import SearchResultItem
+from src.scraping.basic_scraper import fetch_and_parse_url
+from src.scraping.selenium_scraper import scrape_with_selenium
+from src.scraping.playwright_scraper import scrape_with_playwright
+# from src.scraping.llm_scraper import scrape_with_llm # Deferred for now
+from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
+
 
 class BackgroundAgentState(TypedDict):
     input_profile_summary: str # Likely from parent, could include LinkedIn URL or other initial pointers
@@ -100,10 +107,109 @@ def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAge
     state['search_results'] = dummy_results
     # print(f"[BackgroundAgent] Populated search_results with {len(dummy_results)} dummy items.")
     return state
+
+# Updated scrape_background_results_node with TEST_MODE logic from the prompt
+async def scrape_background_results_node(state: BackgroundAgentState) -> BackgroundAgentState:
+    agent_name = "BackgroundAgent"
+    print(f"[{agent_name}] Scraping search results (TEST_MODE: {TEST_MODE})...")
+    current_search_results = state.get('search_results') or []
+    if not current_search_results:
+        print(f"[{agent_name}] No search results to scrape.")
+        return state
+
+    processed_search_results: List[SearchResultItem] = []
+    MIN_CONTENT_LENGTH = 100 
+
+    for item in current_search_results:
+        if item.content and len(item.content) >= MIN_CONTENT_LENGTH:
+            print(f"[{agent_name}] Content already exists for '{item.title}', skipping scrape.")
+            processed_search_results.append(item)
+            continue
+
+        print(f"[{agent_name}] Attempting to scrape URL: {item.link}")
+        scraped_text: Optional[str] = None
+        scraper_used: Optional[str] = None
+
+        # 1. Try Basic Scraper (Always try this one)
+        try:
+            print(f"[{agent_name}] Trying basic_scraper for {item.link}...")
+            scraped_text = await fetch_and_parse_url(str(item.link))
+            if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                scraper_used = "basic_scraper"
+            else:
+                scraped_text = None 
+        except Exception as e:
+            print(f"[{agent_name}] Basic_scraper failed for {item.link}: {e}")
+            scraped_text = None
+
+        # 2. Try Playwright Scraper if basic failed
+        if not scraper_used:
+            if TEST_MODE:
+                print(f"[{agent_name}] TEST_MODE: Simulating Playwright call for {item.link}.")
+                # To test different scenarios, you can vary what dummy data is returned:
+                # Option A: Simulate successful scrape with dummy content
+                scraped_text = f"Simulated Playwright content for {item.link}"
+                if len(scraped_text) >= MIN_CONTENT_LENGTH: # Check length for consistency
+                   scraper_used = "playwright_scraper (simulated)"
+                else: # Should not happen with fixed dummy string but good practice
+                   scraped_text = None
+                # Option B: Simulate Playwright failing to get enough content or erroring
+                # scraped_text = None 
+            else: # Actual call for non-TEST_MODE
+                try:
+                    print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
+                    scraped_text = await scrape_with_playwright(str(item.link))
+                    if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                        scraper_used = "playwright_scraper"
+                    else:
+                        scraped_text = None
+                except Exception as e:
+                    print(f"[{agent_name}] Playwright_scraper failed for {item.link}: {e}")
+                    scraped_text = None
+        
+        # 3. Try Selenium Scraper if previous attempts failed
+        if not scraper_used:
+            if TEST_MODE:
+                print(f"[{agent_name}] TEST_MODE: Simulating Selenium call for {item.link}.")
+                # Option A: Simulate successful scrape
+                scraped_text = f"Simulated Selenium content for {item.link}"
+                if len(scraped_text) >= MIN_CONTENT_LENGTH:
+                   scraper_used = "selenium_scraper (simulated)"
+                else:
+                   scraped_text = None
+                # Option B: Simulate failure
+                # scraped_text = None
+            else: # Actual call for non-TEST_MODE
+                try:
+                    print(f"[{agent_name}] Trying selenium_scraper for {item.link}...")
+                    scraped_text = await scrape_with_selenium(str(item.link))
+                    if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                        scraper_used = "selenium_scraper"
+                    else:
+                        scraped_text = None
+                except Exception as e:
+                    print(f"[{agent_name}] Selenium_scraper failed for {item.link}: {e}")
+                    scraped_text = None
+        
+        if scraper_used:
+            print(f"[{agent_name}] Successfully processed {item.link} using {scraper_used}.")
+            updated_item = item.model_copy(update={
+                'content': scraped_text, 
+                'snippet': item.snippet or (scraped_text[:250]+"..." if scraped_text else None)
+            })
+            processed_search_results.append(updated_item)
+        else:
+            print(f"[{agent_name}] All scrapers failed or returned insufficient content for {item.link}.")
+            processed_search_results.append(item) 
+
+        await asyncio.sleep(0)
+
+    state['search_results'] = processed_search_results
+    # Update 'scraped_data' for compatibility if it's still used elsewhere,
+    # though ideally the system should transition to using 'search_results[i].content'.
+    state['scraped_data'] = [res.content for res in processed_search_results if res.content]
     
-def scrape_background_results_node(state: BackgroundAgentState) -> BackgroundAgentState:
-    print("[BackgroundAgent] Scraping background results...")
-    state['scraped_data'] = ["scraped background content from bg_url1"]
+    print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
 def compile_background_details_node(state: BackgroundAgentState) -> BackgroundAgentState:
