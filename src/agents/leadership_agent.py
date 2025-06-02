@@ -1,9 +1,14 @@
 # src/agents/leadership_agent.py
 from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
+import asyncio # Added import
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # This will eventually be removed or changed when LeadershipAgent becomes a subgraph
 from src.utils.llm_utils import get_openai_response # Added import
 from src.utils.models import SearchResultItem # Added import
+from src.scraping.basic_scraper import fetch_and_parse_url # Added import
+from src.scraping.selenium_scraper import scrape_with_selenium # Added import
+from src.scraping.playwright_scraper import scrape_with_playwright # Added import
+# from src.scraping.llm_scraper import scrape_with_llm # Deferred
 
 # Define the internal state for the Leadership Agent subgraph
 from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
@@ -67,9 +72,87 @@ def execute_search_node(state: LeadershipAgentState) -> LeadershipAgentState:
     state['search_results'] = dummy_results
     return state
 
-def scrape_results_node(state: LeadershipAgentState) -> LeadershipAgentState:
-    print("[LeadershipAgent] Scraping results...")
-    state['scraped_data'] = ["scraped content from url1"]
+async def scrape_results_node(state: LeadershipAgentState) -> LeadershipAgentState:
+    agent_name = "LeadershipAgent"
+    print(f"[{agent_name}] Scraping search results...")
+    current_search_results = state.get('search_results') or []
+    if not current_search_results:
+        print(f"[{agent_name}] No search results to scrape.")
+        return state
+
+    processed_search_results: List[SearchResultItem] = []
+    MIN_CONTENT_LENGTH = 100 # Characters
+
+    for item in current_search_results:
+        if item.content and len(item.content) >= MIN_CONTENT_LENGTH:
+            print(f"[{agent_name}] Content already exists for '{item.title}', skipping scrape.")
+            processed_search_results.append(item)
+            continue
+
+        print(f"[{agent_name}] Attempting to scrape URL: {item.link}")
+        scraped_text: Optional[str] = None
+        scraper_used: Optional[str] = None
+
+        # 1. Try Basic Scraper
+        try:
+            print(f"[{agent_name}] Trying basic_scraper for {item.link}...")
+            scraped_text = await fetch_and_parse_url(str(item.link))
+            if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                scraper_used = "basic_scraper"
+            else:
+                scraped_text = None 
+        except Exception as e:
+            print(f"[{agent_name}] Basic_scraper failed for {item.link}: {e}")
+            scraped_text = None
+
+        # 2. Try Playwright Scraper if basic failed
+        if not scraper_used:
+            try:
+                print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
+                scraped_text = await scrape_with_playwright(str(item.link))
+                if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                    scraper_used = "playwright_scraper"
+                else:
+                    scraped_text = None
+            except Exception as e:
+                print(f"[{agent_name}] Playwright_scraper failed for {item.link}: {e}")
+                scraped_text = None
+        
+        # 3. Try Selenium Scraper if Playwright failed
+        if not scraper_used:
+            try:
+                print(f"[{agent_name}] Trying selenium_scraper for {item.link}...")
+                scraped_text = await scrape_with_selenium(str(item.link))
+                if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                    scraper_used = "selenium_scraper"
+                else:
+                    scraped_text = None
+            except Exception as e:
+                print(f"[{agent_name}] Selenium_scraper failed for {item.link}: {e}")
+                scraped_text = None
+        
+        if scraper_used:
+            print(f"[{agent_name}] Successfully scraped {item.link} using {scraper_used}.")
+            # Update a copy of the SearchResultItem
+            updated_item = item.model_copy(update={
+                'content': scraped_text, 
+                'snippet': item.snippet or (scraped_text[:250]+"..." if scraped_text else None)
+            })
+            processed_search_results.append(updated_item)
+        else:
+            print(f"[{agent_name}] All scrapers failed for {item.link}.")
+            processed_search_results.append(item) # Add original item
+
+        await asyncio.sleep(0) # Yield control
+
+    # Update the main state with processed results
+    state['search_results'] = processed_search_results
+    
+    # For compatibility or if other parts of state use just list of strings for scraped_data
+    # This can be removed if 'scraped_data' field is no longer used or also expects SearchResultItems
+    state['scraped_data'] = [res.content for res in processed_search_results if res.content]
+    
+    print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
 def analyze_data_node(state: LeadershipAgentState) -> LeadershipAgentState:
