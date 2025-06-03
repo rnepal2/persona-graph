@@ -1,5 +1,7 @@
 # Environment variables
 .env*
+.github/
+.git/
 
 # Python virtual environment
 venv/

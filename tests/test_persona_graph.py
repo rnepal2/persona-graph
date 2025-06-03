@@ -1,15 +1,13 @@
-# tests/test_integration_persona_graph.py
+# tests/test_persona_graph.py
 """
-Integration test for the persona-graph pipeline.
-This test runs the main pipeline with a test input and checks that all major fields are populated in the final state.
+This test runs the main pipeline with a test input and checks that all major 
+fields are populated in the final state.
 """
 import asyncio
 import sys
 import os
 
-# Ensure src is in the path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
-
 from graph import app
 from agents.common_state import AgentState
 

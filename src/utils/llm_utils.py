@@ -1,32 +1,19 @@
 # src/llm_utils.py
-
-import asyncio # Added for async
+import asyncio
 from typing import Optional
+from utils.config import OPENAI_API_KEY, GEMINI_API_KEY
 
-# Import API Keys from src.config
 try:
-    from src.config import OPENAI_API_KEY, GEMINI_API_KEY
-    # Future enhancement:
-    # from src.config import DEFAULT_LLM_MODEL_OPENAI, DEFAULT_LLM_MODEL_GEMINI
-except ImportError:
-    print("Warning: Could not import from src.config. API keys might not be available.")
-    OPENAI_API_KEY = None
-    GEMINI_API_KEY = None
-
-# OpenAI Integration
-try:
-    # Try direct import first
     from openai import AsyncOpenAI, APIError as OpenAIApiError
 except ImportError:
     try:
-        # Fallback to importing openai and accessing via attribute
         import openai
         AsyncOpenAI = openai.AsyncOpenAI
-        OpenAIApiError = openai.APIError # Assuming APIError is also accessible this way
+        OpenAIApiError = openai.APIError
     except ImportError:
         print("Warning: OpenAI library not installed. pip install openai")
-        AsyncOpenAI = None # type: ignore
-        OpenAIApiError = None # type: ignore
+        AsyncOpenAI = None 
+        OpenAIApiError = None
 
 async def get_openai_response(prompt: str, system_prompt: Optional[str] = None, model_name: str = "gpt-3.5-turbo") -> Optional[str]:
     """
@@ -73,14 +60,13 @@ async def get_openai_response(prompt: str, system_prompt: Optional[str] = None, 
         print(f"An unexpected error occurred with OpenAI: {e}")
         return None
 
-# Gemini Integration
 try:
     import google.generativeai as genai
 except ImportError:
     print("Warning: Google Generative AI library not installed. pip install google-generativeai")
-    genai = None # type: ignore
+    genai = None
 
-async def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Optional[str]:
+async def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash") -> Optional[str]:
     """
     Gets an asynchronous response from the Google Gemini API.
 
@@ -103,17 +89,12 @@ async def get_gemini_response(prompt: str, model_name: str = "gemini-pro") -> Op
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(model_name)
         print(f"Sending prompt asynchronously to Gemini model {model_name}...")
-        response = await model.generate_content_async(prompt) # Use await and generate_content_async
-        # Check if parts are available and then text
+        response = await model.generate_content_async(prompt)
         if response.parts:
-            return response.text # response.text is a shortcut for response.parts[0].text
-        elif hasattr(response, 'text'): # Fallback if .text is directly available but parts might be empty
+            return response.text
+        elif hasattr(response, 'text'):
              return response.text
         else:
-            # If the response itself is the candidate (older API versions or specific error messages)
-            # It might be helpful to log the full response candidate for debugging
-            # print(f"Full Gemini response candidate: {response.candidates}")
-            # Check for safety ratings or blocks
             if response.prompt_feedbacks:
                 for feedback in response.prompt_feedbacks:
                     if feedback.block_reason:
@@ -154,7 +135,7 @@ if __name__ == "__main__":
     else:
         print("GEMINI_API_KEY not found. Expecting warning from function.")
         
-    gemini_response = asyncio.run(get_gemini_response(test_prompt))
+    gemini_response = asyncio.run(get_gemini_response(prompt=test_user_prompt))
     if gemini_response:
         print(f"Gemini Response: {gemini_response}")
     else:

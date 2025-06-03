@@ -5,23 +5,21 @@ import asyncio
 TEST_MODE = True # Defined at the top of the file
 
 from langgraph.graph import StateGraph, END
-from .common_state import AgentState
-from utils.llm_utils import get_openai_response
+from agents.common_state import AgentState
+from utils.llm_utils import get_openai_response, get_gemini_response
 from utils.models import SearchResultItem
 from scraping.basic_scraper import fetch_and_parse_url
 from scraping.selenium_scraper import scrape_with_selenium
 from scraping.playwright_scraper import scrape_with_playwright
-# from src.scraping.llm_scraper import scrape_with_llm # Deferred for now
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
 
 
 class BackgroundAgentState(TypedDict):
-    input_profile_summary: str # Likely from parent, could include LinkedIn URL or other initial pointers
+    input_profile_summary: str
     linkedin_url: Optional[str]
     generated_queries: Optional[List[str]]
-    search_results: Optional[List[SearchResultItem]] # Updated type hint
+    search_results: Optional[List[SearchResultItem]]
     scraped_data: Optional[List[str]]
-    # For structured background info like education, early career, affiliations
     background_details: Optional[Dict[str, Any]]
     metadata: Optional[List[Dict[str, Any]]]
     error_message: Optional[str]
@@ -42,49 +40,34 @@ async def generate_background_queries_node(state: BackgroundAgentState) -> Backg
     print("[BackgroundAgent] Generating background queries via LLM...")
 
     profile_summary = state.get("input_profile_summary", "No profile summary provided.")
-    # For now, let's assume profile_name can be derived or is part of the summary.
-    # A more robust solution would be to have a dedicated 'profile_name' field.
-    # We'll use a placeholder if it's hard to extract.
-    profile_name_placeholder = "the individual" # Or try to extract from summary
+    profile_name_placeholder = "the individual"
 
-    # Constructing prompts as per the subtask description (OpenAI expects system_prompt as a kwarg)
-    # The main user-facing instruction goes into the first 'prompt' argument.
-    # The role-setting or system-level instruction goes into 'system_prompt'.
-    
-    # The problem description has this structure:
-    # user_prompt = f"""... {profile_name_placeholder} ... {profile_summary} ..."""
-    # raw_llm_response = await get_openai_response(user_prompt, system_prompt=system_prompt)
-    # This means the first arg to get_openai_response is the detailed user_prompt, and system_prompt is the kwarg.
+    system_level_prompt = """You are an expert biographical research assistant. Your goal is to 
+    formulate targeted search queries to uncover comprehensive background information about an 
+    individual, focusing on their education, early career, and foundational experiences."""
 
-    system_level_prompt = """
-You are an expert biographical research assistant. Your goal is to formulate targeted search queries to uncover comprehensive background information about an individual, focusing on their education, early career, and foundational experiences.
-            """
-    # This is the main prompt for the LLM's task
-    user_facing_prompt = f"""
-Generate 3-5 distinct search queries to find background information on {profile_name_placeholder}. This individual's current profile summary is: "{profile_summary}". Focus the queries on:
-1. Educational background (universities, degrees, field of study, graduation years).
-2. Early career history (first few significant roles, companies, and durations).
-3. Key affiliations (e.g., board memberships, advisory roles, non-profit involvement, early in their career or foundational).
-4. Notable early achievements or transitions.
+    user_facing_prompt = f"""Generate 3-5 distinct search queries to find background information on 
+        {profile_name_placeholder}. This individual's current profile summary is: "{profile_summary}". 
+        Focus the queries on:
+            1. Educational background (universities, degrees, field of study, graduation years).
+            2. Early career history (first few significant roles, companies, and durations).
+            3. Key affiliations (e.g., board memberships, advisory roles, non-profit involvement, early in their career or foundational).
+            4. Notable early achievements or transitions.
 
-Return the queries as a numbered list, each query on a new line.
-Example:
-1. {profile_name_placeholder} education history
-2. {profile_name_placeholder} early career
-            """
-    
-    # The `get_openai_response` function is defined as:
-    # async def get_openai_response(prompt: str, system_prompt: Optional[str] = None, model_name: str = "gpt-3.5-turbo")
-    # So, user_facing_prompt is the `prompt` (first arg), and system_level_prompt is the `system_prompt` (kwarg).
-    raw_llm_response = await get_openai_response(user_facing_prompt, system_prompt=system_level_prompt)
+            Return the queries as a numbered list, each query on a new line.
+            Example:
+            1. {profile_name_placeholder} education history
+            2. {profile_name_placeholder} early career
+        """
+    #raw_llm_response = await get_openai_response(user_facing_prompt, system_prompt=system_level_prompt)
+    raw_llm_response = await get_gemini_response(prompt=f"{system_level_prompt}, \n\n {user_facing_prompt}")
 
     generated_queries = []
     if raw_llm_response:
         queries = raw_llm_response.strip().split('\n')
         for q in queries:
-            # Remove potential numbering (e.g., "1. ", "1) ")
             cleaned_q = q.split('.', 1)[-1].split(')', 1)[-1].strip()
-            if cleaned_q: # Avoid empty strings
+            if cleaned_q:
                 generated_queries.append(cleaned_q)
         print(f"[BackgroundAgent] LLM generated queries: {generated_queries}")
     else:
@@ -96,7 +79,6 @@ Example:
 
 def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAgentState:
     print("[BackgroundAgent] Executing background search (placeholder)...")
-    # Dummy results to test filtering for background agent
     dummy_results = [
         SearchResultItem(title="John Doe Education History - University XYZ", link="http://example.edu/johndoe-alumni", snippet="John Doe graduated with a BS in Computer Science.", source_api="placeholder_bg"),
         SearchResultItem(title="John Doe's Early Career at OldCorp", link="http://newsarchive.com/johndoe-oldcorp-role", snippet="Details about John Doe's first major role.", source_api="placeholder_bg"),
@@ -105,10 +87,9 @@ def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAge
         SearchResultItem(title="John Doe - LinkedIn Profile", link="http://linkedin.com/in/johndoe-profile", snippet="Professional profile of John Doe.", source_api="placeholder_bg")
     ]
     state['search_results'] = dummy_results
-    # print(f"[BackgroundAgent] Populated search_results with {len(dummy_results)} dummy items.")
     return state
 
-# Updated scrape_background_results_node with TEST_MODE logic from the prompt
+# Updated TEST_MODE logic
 async def scrape_background_results_node(state: BackgroundAgentState) -> BackgroundAgentState:
     agent_name = "BackgroundAgent"
     print(f"[{agent_name}] Scraping search results (TEST_MODE: {TEST_MODE})...")
@@ -205,10 +186,7 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
         await asyncio.sleep(0)
 
     state['search_results'] = processed_search_results
-    # Update 'scraped_data' for compatibility if it's still used elsewhere,
-    # though ideally the system should transition to using 'search_results[i].content'.
     state['scraped_data'] = [res.content for res in processed_search_results if res.content]
-    
     print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
@@ -218,7 +196,6 @@ def compile_background_details_node(state: BackgroundAgentState) -> BackgroundAg
         state['background_details'] = {}
     state['background_details']['education'] = "Placeholder University"
     state['background_details']['early_career'] = "Placeholder First Job"
-    # Also append to metadata as an example
     if state.get('metadata') is None:
         state['metadata'] = []
     state['metadata'].append({"source": "BackgroundAgent", "info": "Compiled background details"})
@@ -263,11 +240,7 @@ background_graph.add_edge("execute_search", "filter_search_results") # Changed e
 background_graph.add_edge("filter_search_results", "scrape_results") # Added edge
 background_graph.add_edge("scrape_results", "compile_details")
 background_graph.add_edge("compile_details", END)
-
 background_subgraph_app = background_graph.compile()
-
-# AgentState should be imported from .common_state
-# BackgroundAgentState and background_subgraph_app are defined above in this file.
 
 async def background_agent_node(state: AgentState) -> AgentState: # Changed to async def
     print("[MainGraph] Calling BackgroundAgent subgraph...")
@@ -331,5 +304,4 @@ async def background_agent_node(state: AgentState) -> AgentState: # Changed to a
     # 4. Set next agent in parent graph
     print("[BackgroundAgentWrapper] Setting next agent to LeadershipAgent.")
     state['next_agent_to_call'] = "LeadershipAgent"
-
     return state

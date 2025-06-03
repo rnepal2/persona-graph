@@ -2,7 +2,7 @@ import asyncio
 from serpapi import SerpApiClient # Official SerpApi client
 from typing import List, Optional, Dict, Any
 from utils.models import SearchResultItem
-from config import SERPAPI_API_KEY # Will be added to config later
+from utils.config import SERPAPI_API_KEY # Will be added to config later
 from pydantic import ValidationError # For handling Pydantic errors
 
 async def perform_serpapi_search(query: str, max_results: int = 5) -> List[SearchResultItem]:

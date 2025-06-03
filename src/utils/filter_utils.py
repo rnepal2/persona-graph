@@ -1,9 +1,8 @@
 import asyncio
 from typing import List, Optional, Dict, Any
-from urllib.parse import urlparse # For robust hostname extraction
-
-from utils.models import SearchResultItem # Added import
-from utils.llm_utils import get_openai_response # Or your preferred LLM util
+from urllib.parse import urlparse 
+from utils.models import SearchResultItem
+from utils.llm_utils import get_openai_response, get_gemini_response
 
 DEFAULT_BLOCKED_DOMAINS = [
     "youtube.com", "m.youtube.com", "youtu.be",
@@ -11,7 +10,6 @@ DEFAULT_BLOCKED_DOMAINS = [
     "twitter.com", "t.co",
     "instagram.com",
     "tiktok.com",
-    "linkedin.com", # As per earlier rationale, can be removed if needed
     "pinterest.com",
     "reddit.com",
     "dailymotion.com",
@@ -45,23 +43,26 @@ async def filter_search_results_logic(
             print(f"[FilterLogic] Error parsing domain for item {item.link}: {e}. Item will be kept for LLM check.")
 
         # 2. LLM-based relevance filtering
-        system_prompt_relevance = """
-You are a meticulous relevance assessment assistant. Your task is to determine if a given web search result is relevant to a specific research goal for profiling an individual. Respond with only "YES" or "NO". Do not provide explanations or any other text.
-        """
+        system_prompt_relevance = """You are a meticulous relevance assessment assistant. Your task is 
+            to determine if a given web search result is relevant to a specific research goal for profiling 
+            an individual. Respond with only "YES" or "NO". Do not provide explanations or any other text."""
+        
         user_prompt_relevance = f"""
-Original Search Intent/Agent Focus: "{agent_query_focus}"
-Overall Profile Summary of Individual: "{profile_summary}"
+            Original Search Intent/Agent Focus: "{agent_query_focus}"
+            Overall Profile Summary of Individual: "{profile_summary}"
 
-Search Result Details:
-Title: "{item.title}"
-Link: "{str(item.link)}"
-Snippet: "{item.snippet or 'N/A'}"
+            Search Result Details:
+            Title: "{item.title}"
+            Link: "{str(item.link)}"
+            Snippet: "{item.snippet or 'N/A'}"
 
-Based on the search intent and the profile summary, is this search result relevant for further investigation? Respond with only YES or NO.
+            Based on the search intent and the profile summary, is this search result relevant for 
+            further investigation? Respond with only YES or NO.
         """
 
         print(f"[FilterLogic] Evaluating relevance for: {item.title} (Link: {item.link})")
-        llm_response = await get_openai_response(user_prompt_relevance, system_prompt=system_prompt_relevance)
+        #llm_response = await get_openai_response(user_prompt_relevance, system_prompt=system_prompt_relevance)
+        llm_response = await get_gemini_response(f"{system_prompt_relevance} \n\n {user_prompt_relevance}")
 
         if llm_response and llm_response.strip().upper() == "YES":
             print(f"[FilterLogic] Deemed RELEVANT by LLM: {item.title}")

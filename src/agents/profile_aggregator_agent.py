@@ -1,6 +1,6 @@
 # src/agents/profile_aggregator_agent.py
 from typing import List, Optional
-from .common_state import AgentState
+from agents.common_state import AgentState
 
 def profile_aggregator_node(state: AgentState) -> AgentState:
     print("[Profile Aggregator Node] called.")

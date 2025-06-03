@@ -2,7 +2,7 @@ import asyncio
 from tavily import TavilyClient # Official Tavily client
 from typing import List, Optional, Dict, Any
 from utils.models import SearchResultItem
-from config import TAVILY_API_KEY # Will be added to config later
+from utils.config import TAVILY_API_KEY # Will be added to config later
 from pydantic import ValidationError # For handling potential model validation errors
 
 async def perform_tavily_search(query: str, max_results: int = 5) -> List[SearchResultItem]:

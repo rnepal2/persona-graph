@@ -2,7 +2,7 @@
 from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 import asyncio # Added import
 from langgraph.graph import StateGraph, END
-from .common_state import AgentState # This will eventually be removed or changed when LeadershipAgent becomes a subgraph
+from agents.common_state import AgentState # This will eventually be removed or changed when LeadershipAgent becomes a subgraph
 from utils.llm_utils import get_openai_response # Added import
 from utils.models import SearchResultItem # Added import
 from scraping.basic_scraper import fetch_and_parse_url # Added import

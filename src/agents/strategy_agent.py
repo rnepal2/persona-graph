@@ -1,7 +1,7 @@
 # src/agents/strategy_agent.py
 from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
-from .common_state import AgentState
+from agents.common_state import AgentState
 from utils.llm_utils import get_openai_response
 from utils.models import SearchResultItem
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS

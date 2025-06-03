@@ -1,6 +1,6 @@
 # src/agents/planner_agent.py
 from typing import List, Optional # Though not strictly needed for this specific node, good for consistency
-from .common_state import AgentState
+from agents.common_state import AgentState
 
 def planner_supervisor_node(state: AgentState) -> AgentState:
     print("[Planner/Supervisor Node] called.")
