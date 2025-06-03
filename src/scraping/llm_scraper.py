@@ -1,6 +1,6 @@
 import asyncio
 from typing import Optional, List # List might not be needed directly for this function's return
-from src.utils.llm_utils import get_openai_response # Or your preferred LLM util
+from utils.llm_utils import get_openai_response # Or your preferred LLM util
 
 # Define a rough character limit for HTML to avoid excessive token usage.
 # This is a simple truncation strategy. More complex chunking could be future work.
@@ -33,26 +33,30 @@ async def scrape_with_llm(
     else:
         html_content_to_send = html_content
 
-    system_prompt = """
-You are an expert web content extraction assistant. Your primary goal is to accurately extract the main textual content (e.g., article body, main information) from provided HTML, stripping away boilerplate like navigation menus, headers, footers, advertisements, and sidebars. Focus on readable, coherent text. If the HTML appears to be non-textual (e.g., an image page, an error page with no clear article), respond with "NO_MAIN_CONTENT_FOUND".
-    """
+    system_prompt = """You are an expert web content extraction assistant. Your primary goal is to accurately 
+                    extract the main textual content (e.g., article body, main information) from provided HTML, 
+                    stripping away boilerplate like navigation menus, headers, footers, advertisements, and sidebars. 
+                    Focus on readable, coherent text. If the HTML appears to be non-textual (e.g., an image page,
+                    an error page with no clear article), respond with "NO_MAIN_CONTENT_FOUND".
+                    """
 
-    user_task_description = "Extract the main textual content from the HTML provided below. Remove all navigation links, ads, footers, headers, and other boilerplate. Present the extracted text clearly."
+    user_task_description = """Extract the main textual content from the HTML provided below. Remove all
+    "navigation links, ads, footers, headers, and other boilerplate. Present the extracted text clearly."""
+
     if extraction_focus:
         user_task_description += f" Prioritize content relevant to: '{extraction_focus}'."
 
 
-    user_prompt = f"""
-Source URL (for context, if available): {url_for_context or 'N/A'}
-Extraction Focus: {extraction_focus or 'N/A'}
+    user_prompt = f"""Source URL (for context, if available): 
+                     {url_for_context or 'N/A'}     
+                    Extraction Focus: {extraction_focus or 'N/A'}
 
-HTML Content:
-"""
-{html_content_to_send}
-"""
+                    HTML Content:
+                    {html_content_to_send}
 
-Task: {user_task_description}
-    """
+                    Task: 
+                    {user_task_description}
+                """
     
     print(f"[LLMScraper] Sending HTML (first 200 chars): '{html_content_to_send[:200]}...' to LLM for extraction.")
     # Using a higher max_tokens for the response, as extracted content can be lengthy.

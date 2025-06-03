@@ -3,15 +3,15 @@ from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 import asyncio # Added import
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState # This will eventually be removed or changed when LeadershipAgent becomes a subgraph
-from src.utils.llm_utils import get_openai_response # Added import
-from src.utils.models import SearchResultItem # Added import
-from src.scraping.basic_scraper import fetch_and_parse_url # Added import
-from src.scraping.selenium_scraper import scrape_with_selenium # Added import
-from src.scraping.playwright_scraper import scrape_with_playwright # Added import
+from utils.llm_utils import get_openai_response # Added import
+from utils.models import SearchResultItem # Added import
+from scraping.basic_scraper import fetch_and_parse_url # Added import
+from scraping.selenium_scraper import scrape_with_selenium # Added import
+from scraping.playwright_scraper import scrape_with_playwright # Added import
 # from src.scraping.llm_scraper import scrape_with_llm # Deferred
 
 # Define the internal state for the Leadership Agent subgraph
-from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
+from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
 
 class LeadershipAgentState(TypedDict):
     input_profile_summary: str

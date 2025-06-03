@@ -1,13 +1,16 @@
 # src/agents/strategy_agent.py
 from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
-from .common_state import AgentState # For the wrapper node later
-from src.utils.llm_utils import get_openai_response # Added import
-from src.utils.models import SearchResultItem # Added import
+from .common_state import AgentState
+from utils.llm_utils import get_openai_response
+from utils.models import SearchResultItem
+from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
+from scraping.basic_scraper import fetch_and_parse_url
+from scraping.selenium_scraper import scrape_with_selenium
+from scraping.playwright_scraper import scrape_with_playwright
+import asyncio
 
 # Define the internal state for the Strategy Agent subgraph
-from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
-
 class StrategyAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
@@ -60,16 +63,88 @@ def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAgentStat
     dummy_results = [
         SearchResultItem(title="Jane Doe's Impact on Innovate Inc. Market Share", link="http://financialnews.com/innovate-market-share-doe", snippet="Analysis of market share growth under Jane Doe's strategic initiatives.", source_api="placeholder_strat"),
         SearchResultItem(title="Innovate Inc. M&A Strategy Led by Jane Doe", link="http://mergerweekly.com/innovate-inc-ma-doe", snippet="Details of recent M&A activities directed by Jane Doe.", source_api="placeholder_strat"),
-        SearchResultItem(title="Jane Doe's Reddit AMA on Company Vision", link="http://reddit.com/r/IAmA/comments/janedoe_ama", snippet="Jane Doe answers questions about company vision on Reddit.", source_api="placeholder_strat"), # Blocked domain
-        SearchResultItem(title="Gardening Tips for Urban Dwellers", link="http://urbangarden.com/tips", snippet="How to grow vegetables in small city spaces.", source_api="placeholder_strat"), # Irrelevant
+        SearchResultItem(title="Jane Doe's Reddit AMA on Company Vision", link="http://reddit.com/r/IAmA/comments/janedoe_ama", snippet="Jane Doe answers questions about company vision on Reddit.", source_api="placeholder_strat"),
+        SearchResultItem(title="Gardening Tips for Urban Dwellers", link="http://urbangarden.com/tips", snippet="How to grow vegetables in small city spaces.", source_api="placeholder_strat"),
         SearchResultItem(title="Jane Doe's Keynote on Future of Tech", link="http://techconference.com/jane-doe-keynote-summary", snippet="Summary of Jane Doe's keynote speech on future technology trends and company direction.", source_api="placeholder_strat")
     ]
     state['search_results'] = dummy_results
     return state
 
-def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAgentState:
-    print("[StrategyAgent] Scraping strategy results...")
-    state['scraped_data'] = ["scraped strategy content from strat_url1"]
+async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAgentState:
+    agent_name = "StrategyAgent"
+    print(f"[{agent_name}] Scraping strategy results...")
+    current_search_results = state.get('search_results') or []
+    if not current_search_results:
+        print(f"[{agent_name}] No search results to scrape.")
+        return state
+
+    processed_search_results: List[SearchResultItem] = []
+    MIN_CONTENT_LENGTH = 100
+
+    for item in current_search_results:
+        if getattr(item, 'content', None) and len(item.content) >= MIN_CONTENT_LENGTH:
+            print(f"[{agent_name}] Content already exists for '{item.title}', skipping scrape.")
+            processed_search_results.append(item)
+            continue
+
+        print(f"[{agent_name}] Attempting to scrape URL: {item.link}")
+        scraped_text: Optional[str] = None
+        scraper_used: Optional[str] = None
+
+        # 1. Try Basic Scraper
+        try:
+            print(f"[{agent_name}] Trying basic_scraper for {item.link}...")
+            scraped_text = await fetch_and_parse_url(str(item.link))
+            if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                scraper_used = "basic_scraper"
+            else:
+                scraped_text = None
+        except Exception as e:
+            print(f"[{agent_name}] Basic_scraper failed for {item.link}: {e}")
+            scraped_text = None
+
+        # 2. Try Playwright Scraper if basic failed
+        if not scraper_used:
+            try:
+                print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
+                scraped_text = await scrape_with_playwright(str(item.link))
+                if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                    scraper_used = "playwright_scraper"
+                else:
+                    scraped_text = None
+            except Exception as e:
+                print(f"[{agent_name}] Playwright_scraper failed for {item.link}: {e}")
+                scraped_text = None
+
+        # 3. Try Selenium Scraper if Playwright failed
+        if not scraper_used:
+            try:
+                print(f"[{agent_name}] Trying selenium_scraper for {item.link}...")
+                scraped_text = await scrape_with_selenium(str(item.link))
+                if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
+                    scraper_used = "selenium_scraper"
+                else:
+                    scraped_text = None
+            except Exception as e:
+                print(f"[{agent_name}] Selenium_scraper failed for {item.link}: {e}")
+                scraped_text = None
+
+        if scraper_used:
+            print(f"[{agent_name}] Successfully processed {item.link} using {scraper_used}.")
+            updated_item = item.model_copy(update={
+                'content': scraped_text,
+                'snippet': item.snippet or (scraped_text[:250]+"..." if scraped_text else None)
+            })
+            processed_search_results.append(updated_item)
+        else:
+            print(f"[{agent_name}] All scrapers failed or returned insufficient content for {item.link}.")
+            processed_search_results.append(item)
+
+        await asyncio.sleep(0)
+
+    state['search_results'] = processed_search_results
+    state['scraped_data'] = [res.content for res in processed_search_results if getattr(res, 'content', None)]
+    print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
 def analyze_strategy_data_node(state: StrategyAgentState) -> StrategyAgentState:

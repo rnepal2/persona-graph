@@ -2,8 +2,8 @@ import asyncio
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse # For robust hostname extraction
 
-from src.utils.models import SearchResultItem
-from src.utils.llm_utils import get_openai_response # Or your preferred LLM util
+from utils.models import SearchResultItem # Added import
+from utils.llm_utils import get_openai_response # Or your preferred LLM util
 
 DEFAULT_BLOCKED_DOMAINS = [
     "youtube.com", "m.youtube.com", "youtu.be",

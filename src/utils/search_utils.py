@@ -7,8 +7,8 @@ from pydantic import ValidationError # For handling Pydantic errors
 
 # Conceptual: Import API key from config.
 # Although DDGS().text might not require it, other features or engines might.
-from src.config import DUCKDUCKGO_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY # Ensure config loading
-from src.utils.models import SearchResultItem # Added import
+from config import DUCKDUCKGO_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY # Ensure config loading
+from utils.models import SearchResultItem # Added import
 
 async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[SearchResultItem]:
     """

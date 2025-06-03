@@ -6,13 +6,13 @@ TEST_MODE = True # Defined at the top of the file
 
 from langgraph.graph import StateGraph, END
 from .common_state import AgentState
-from src.utils.llm_utils import get_openai_response
-from src.utils.models import SearchResultItem
-from src.scraping.basic_scraper import fetch_and_parse_url
-from src.scraping.selenium_scraper import scrape_with_selenium
-from src.scraping.playwright_scraper import scrape_with_playwright
+from utils.llm_utils import get_openai_response
+from utils.models import SearchResultItem
+from scraping.basic_scraper import fetch_and_parse_url
+from scraping.selenium_scraper import scrape_with_selenium
+from scraping.playwright_scraper import scrape_with_playwright
 # from src.scraping.llm_scraper import scrape_with_llm # Deferred for now
-from src.utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
+from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
 
 
 class BackgroundAgentState(TypedDict):
@@ -155,7 +155,7 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
                    scraped_text = None
                 # Option B: Simulate Playwright failing to get enough content or erroring
                 # scraped_text = None 
-            else: # Actual call for non-TEST_MODE
+            else:
                 try:
                     print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
                     scraped_text = await scrape_with_playwright(str(item.link))
