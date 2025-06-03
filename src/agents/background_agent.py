@@ -1,8 +1,9 @@
 # src/agents/background_agent.py
-from typing import TypedDict, List, Optional, Dict, Any
+import os
 import asyncio
+from typing import TypedDict, List, Optional, Dict, Any
 
-TEST_MODE = True # Defined at the top of the file
+TEST_MODE = True
 
 from langgraph.graph import StateGraph, END
 from agents.common_state import AgentState
@@ -12,6 +13,11 @@ from scraping.basic_scraper import fetch_and_parse_url
 from scraping.selenium_scraper import scrape_with_selenium
 from scraping.playwright_scraper import scrape_with_playwright
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
+
+from utils.llm_utils import async_parse_structured_data
+from pydantic import BaseModel, Field
+from utils.config import GEMINI_API_KEY
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 
 class BackgroundAgentState(TypedDict):
@@ -36,48 +42,84 @@ def process_initial_input_node(state: BackgroundAgentState) -> BackgroundAgentSt
     # state['linkedin_url'] = "http://linkedin.com/in/placeholder" # Example
     return state
 
+async def extract_profile_name_from_summary(profile_summary: str) -> Optional[str]:
+    """
+    Uses the Gemini LLM structured data parser to extract the person's name from the profile summary.
+    Returns the extracted name or None if not found.
+    """
+    if not GEMINI_API_KEY:
+        print("GEMINI_API_KEY not set. Cannot extract profile name.")
+        return None
+    os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        temperature=0,
+        max_tokens=None,
+        timeout=None,
+        max_retries=2,
+    )
+
+    class NameSchema(BaseModel):
+        name: Optional[str] = Field(default=None, description="The full name of the person if available in the profile summary.")
+
+    try:
+        result = await async_parse_structured_data(profile_summary, schema=NameSchema, llm=llm)
+        if result and getattr(result, "name", None):
+            return result.name
+    except Exception as e:
+        print(f"[extract_profile_name_from_summary] Error: {e}")
+    return None
+
 async def generate_background_queries_node(state: BackgroundAgentState) -> BackgroundAgentState:
     print("[BackgroundAgent] Generating background queries via LLM...")
 
     profile_summary = state.get("input_profile_summary", "No profile summary provided.")
-    profile_name_placeholder = "the individual"
+    # Extract the profile name using the structured data parser
+    profile_name = await extract_profile_name_from_summary(profile_summary)
+    profile_name_placeholder = profile_name or "the individual"
+    print("Individual Name: ", profile_name_placeholder)
 
-    system_level_prompt = """You are an expert biographical research assistant. Your goal is to 
-    formulate targeted search queries to uncover comprehensive background information about an 
+    system_level_prompt = """You are an expert biographical research assistant. Your goal is to \
+    formulate targeted search queries to uncover comprehensive background information about an \
     individual, focusing on their education, early career, and foundational experiences."""
 
-    user_facing_prompt = f"""Generate 3-5 distinct search queries to find background information on 
-        {profile_name_placeholder}. This individual's current profile summary is: "{profile_summary}". 
+    user_facing_prompt = f"""Generate 3-5 distinct search queries to find background information on
+        {profile_name_placeholder}. This individual's current profile summary is: \n"{profile_summary}". 
         Focus the queries on:
             1. Educational background (universities, degrees, field of study, graduation years).
             2. Early career history (first few significant roles, companies, and durations).
-            3. Key affiliations (e.g., board memberships, advisory roles, non-profit involvement, early in their career or foundational).
+            3. Key affiliations (e.g., board memberships, advisory roles, non-profit involvement, 
+               early in their career or foundational).
             4. Notable early achievements or transitions.
 
             Return the queries as a numbered list, each query on a new line.
             Example:
             1. {profile_name_placeholder} education history
-            2. {profile_name_placeholder} early career
+            2. {profile_name_placeholder} career history
+
+            Make each query as a simple English phrase or question, suitable for a web search engine.
         """
-    #raw_llm_response = await get_openai_response(user_facing_prompt, system_prompt=system_level_prompt)
+    # raw_llm_response = await get_openai_response(user_facing_prompt, system_prompt=system_level_prompt)
     raw_llm_response = await get_gemini_response(prompt=f"{system_level_prompt}, \n\n {user_facing_prompt}")
 
+    class QueriesList(BaseModel):
+        queries: List[str] = Field(
+            default_factory=list,
+            description="List of generated search queries for background information."
+        )
+    
     generated_queries = []
     if raw_llm_response:
-        queries = raw_llm_response.strip().split('\n')
-        for q in queries:
-            cleaned_q = q.split('.', 1)[-1].split(')', 1)[-1].strip()
-            if cleaned_q:
-                generated_queries.append(cleaned_q)
+        queries = await async_parse_structured_data(raw_llm_response, schema=QueriesList)
+        generated_queries = queries.queries if queries and queries.queries else []
         print(f"[BackgroundAgent] LLM generated queries: {generated_queries}")
     else:
         print("[BackgroundAgent] LLM call failed or returned no response. Using default placeholder queries.")
         generated_queries = ["default background query 1", "default background query 2"] # Fallback
-
     state['generated_queries'] = generated_queries
     return state
 
-def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAgentState:
+def execute_background_search_node_placeholder(state: BackgroundAgentState) -> BackgroundAgentState:
     print("[BackgroundAgent] Executing background search (placeholder)...")
     dummy_results = [
         SearchResultItem(title="John Doe Education History - University XYZ", link="http://example.edu/johndoe-alumni", snippet="John Doe graduated with a BS in Computer Science.", source_api="placeholder_bg"),
@@ -87,6 +129,21 @@ def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAge
         SearchResultItem(title="John Doe - LinkedIn Profile", link="http://linkedin.com/in/johndoe-profile", snippet="Professional profile of John Doe.", source_api="placeholder_bg")
     ]
     state['search_results'] = dummy_results
+    return state
+
+async def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAgentState:
+    print("[BackgroundAgent] Executing background search using DuckDuckGo API...")
+    from utils.search_utils import perform_duckduckgo_search
+    queries = state.get('generated_queries') or []
+    all_results = []
+    for query in queries:
+        try:
+            results = await perform_duckduckgo_search(query=query, max_results=3)
+            if results:
+                all_results.extend(results)
+        except Exception as e:
+            print(f"[BackgroundAgent] DuckDuckGo search failed for query '{query}': {e}")
+    state['search_results'] = all_results
     return state
 
 # Updated TEST_MODE logic
@@ -253,7 +310,7 @@ async def background_agent_node(state: AgentState) -> AgentState: # Changed to a
 
     initial_subgraph_state = BackgroundAgentState(
         input_profile_summary=parent_input,
-        linkedin_url=None, # Subgraph can populate this if found in input_profile_summary
+        linkedin_url=None,
         generated_queries=None,
         search_results=None,
         scraped_data=None,

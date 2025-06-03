@@ -15,7 +15,7 @@ from agents import (
     leadership_agent_node,
     reputation_agent_node,
     strategy_agent_node,
-    background_agent_node, # Added background_agent_node
+    background_agent_node,
     profile_aggregator_node
 )
 
@@ -26,7 +26,7 @@ graph = StateGraph(AgentState) # AgentState is now imported
 
 # Add nodes
 graph.add_node("planner_supervisor_node", planner_supervisor_node)
-graph.add_node("background_agent_node", background_agent_node) # Added background_agent_node
+graph.add_node("background_agent_node", background_agent_node)
 graph.add_node("leadership_agent_node", leadership_agent_node)
 graph.add_node("reputation_agent_node", reputation_agent_node)
 graph.add_node("strategy_agent_node", strategy_agent_node)

@@ -1,7 +1,13 @@
 # src/llm_utils.py
+import os
 import asyncio
-from typing import Optional
+from typing import Optional, Type
+from pydantic import BaseModel
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_google_genai import ChatGoogleGenerativeAI
 from utils.config import OPENAI_API_KEY, GEMINI_API_KEY
+os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+
 
 try:
     from openai import AsyncOpenAI, APIError as OpenAIApiError
@@ -15,7 +21,7 @@ except ImportError:
         AsyncOpenAI = None 
         OpenAIApiError = None
 
-async def get_openai_response(prompt: str, system_prompt: Optional[str] = None, model_name: str = "gpt-3.5-turbo") -> Optional[str]:
+async def get_openai_response(prompt: str, system_prompt: Optional[str] = None, model_name: str = "gpt-4.1-nano") -> Optional[str]:
     """
     Gets an asynchronous response from the OpenAI API.
 
@@ -88,7 +94,7 @@ async def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash")
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(model_name)
-        print(f"Sending prompt asynchronously to Gemini model {model_name}...")
+        print(f"Async API call with model: {model_name}")
         response = await model.generate_content_async(prompt)
         if response.parts:
             return response.text
@@ -106,6 +112,66 @@ async def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash")
     except Exception as e:
         print(f"An unexpected error occurred with Gemini: {e}")
         return None
+
+def parse_structured_data(
+    text: str,
+    schema: Type[BaseModel],
+    llm
+) -> BaseModel:
+    """
+    Extracts structured data from text using the provided LLM and schema.
+    llm: Must be a LangChain chat model supporting with_structured_output (e.g., AzureChatOpenAI, ChatGoogleGenerativeAI).
+    schema: Pydantic BaseModel class defining the output structure.
+    text: The input text to extract from.
+    Returns: An instance of the schema populated with extracted data.
+    """
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            "You are an expert data extraction assitant from a text. "
+            "Only extract relevant information from the text. "
+            "If value of an attribute is not present in the given text,"
+            "return None for the attribute's value, DO NOT make up that data point yourself."
+        ),
+        ("human", "{text}"),
+    ])
+    structured_llm = llm.with_structured_output(schema=schema)
+    final_prompt = prompt.invoke({"text": text})
+    return structured_llm.invoke(final_prompt)
+
+llm_gemini = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash",
+    temperature=0,
+    max_tokens=None,
+    timeout=None,
+    max_retries=2,
+)
+
+async def async_parse_structured_data(
+    text: str,
+    schema: Type[BaseModel],
+    llm=llm_gemini
+) -> BaseModel:
+    """
+    Asynchronously extracts structured data from text using the provided LLM and schema.
+    llm: Must be a LangChain chat model supporting with_structured_output (e.g., AzureChatOpenAI, ChatGoogleGenerativeAI).
+    schema: Pydantic BaseModel class defining the output structure.
+    text: The input text to extract from.
+    Returns: An instance of the schema populated with extracted data.
+    """
+    prompt = ChatPromptTemplate.from_messages([
+        (
+            "system",
+            "You are an expert extraction algorithm. "
+            "Only extract relevant information from the text. "
+            "If you do not know the value of an attribute asked to extract, "
+            "return null for the attribute's value."
+        ),
+        ("human", "{text}"),
+    ])
+    structured_llm = llm.with_structured_output(schema=schema)
+    final_prompt = prompt.invoke({"text": text})
+    return await structured_llm.ainvoke(final_prompt)
 
 if __name__ == "__main__":
     print("Testing llm_utils.py (async)...")
@@ -140,5 +206,61 @@ if __name__ == "__main__":
         print(f"Gemini Response: {gemini_response}")
     else:
         print("No response from Gemini (or API key was missing/error occurred).")
+
+    # Example usage of parse_structured_data_async
+    from typing import List, Optional
+    from pydantic import BaseModel, Field
+    try:
+        from langchain_openai import AzureChatOpenAI
+    except ImportError:
+        AzureChatOpenAI = None
+    try:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+    except ImportError:
+        ChatGoogleGenerativeAI = None
+
+    class Person(BaseModel):
+        name: Optional[str] = Field(default=None, description="The name of the person")
+        hair_color: Optional[str] = Field(default=None, description="The color of the person's hair if known")
+        height_in_meters: Optional[str] = Field(default=None, description="Height measured in meters")
+
+    class Data(BaseModel):
+        people: List[Person]
+
+    input_text = "My name is Jeff, my hair is black and I am 6 feet tall. Anna has the same color hair as me."
+
+    # Example with AzureChatOpenAI (if available)
+    if OPENAI_API_KEY:
+        llm_instance = AzureChatOpenAI(
+            azure_deployment="your-deployment",
+            api_version="2024-05-01-preview",
+            temperature=0,
+            max_tokens=None,
+            timeout=None,
+            max_retries=2,
+        )
+        async def test_azure():
+            result = await async_parse_structured_data(input_text, Data, llm=llm_instance)
+            print("AzureChatOpenAI structured result:", result)
+        asyncio.run(test_azure())
+    else:
+        print("AzureChatOpenAI not installed.")
+
+    # Example with Gemini (if available)
+    if GEMINI_API_KEY:
+        os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
+        llm_gemini = ChatGoogleGenerativeAI(
+            model="gemini-2.0-flash",
+            temperature=0,
+            max_tokens=None,
+            timeout=None,
+            max_retries=2,
+        )
+        async def test_gemini():
+            result = await async_parse_structured_data(input_text, Data, llm=llm_gemini)
+            print("Gemini structured result:", result)
+        asyncio.run(test_gemini())
+    else:
+        print("ChatGoogleGenerativeAI not installed.")
 
     print("\nllm_utils.py (async) test finished.")

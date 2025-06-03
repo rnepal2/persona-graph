@@ -13,7 +13,7 @@ from agents.common_state import AgentState
 
 def test_persona_graph_pipeline():
     initial_input: AgentState = {
-        "leader_initial_input": "https://www.linkedin.com/in/nepalrabindra",
+        "leader_initial_input": "Rabindra Nepal is a Principal Data Sceientist at Johnson & Johnson with PhD in Physics.",
         "leadership_info": None,
         "reputation_info": None,
         "strategy_info": None,
@@ -28,7 +28,8 @@ def test_persona_graph_pipeline():
     print("\n--- PersonaGraph Integration Test Output ---")
     for key, value in final_state.items():
         print(f"  {key}: {value}")
-    # Assert that all major fields are present and not None (except error_message)
+        
+    print("\n--- End of Output ---\n")
     assert final_state["background_info"] is not None, "Background info missing"
     assert final_state["leadership_info"] is not None, "Leadership info missing"
     assert final_state["reputation_info"] is not None, "Reputation info missing"

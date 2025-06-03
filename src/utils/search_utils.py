@@ -3,8 +3,8 @@ import asyncio
 from duckduckgo_search import DDGS
 from typing import List, Dict, Optional 
 from pydantic import ValidationError
-from utils.config import DUCKDUCKGO_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 from utils.models import SearchResultItem
+from utils.config import DUCKDUCKGO_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
 async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[SearchResultItem]:
     """
@@ -48,8 +48,7 @@ async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[Se
                 except Exception as e: 
                     print(f"[duckduckgo_search] Error parsing result: {res_dict}. Error: {e}. Skipping.")
         else:
-            print("No results returned from ddgs.text via to_thread")
-            
+            print("No results returned from ddgs.text via to_thread")  
     except Exception as e:
         print(f"Error during asynchronous DuckDuckGo search (via to_thread): {e}")
     return parsed_results
