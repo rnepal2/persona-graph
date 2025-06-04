@@ -1,13 +1,4 @@
 # src/graph_structure.py
-
-# Typing imports for AgentState are now in src/agents/common_state.py
-# `operator` import is no longer needed.
-# `List` and `Optional` from typing might not be directly needed here anymore
-# if only used by AgentState or the moved node functions.
-# We'll keep them if `should_continue` or other parts need them,
-# but for now, let's assume they are not, and can be added back if linting/testing shows issues.
-# from typing import List, Optional # Keep if needed for should_continue directly
-
 from langgraph.graph import StateGraph, START, END
 from agents import (
     AgentState,

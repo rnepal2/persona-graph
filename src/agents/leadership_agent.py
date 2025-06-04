@@ -8,7 +8,6 @@ from utils.models import SearchResultItem # Added import
 from scraping.basic_scraper import fetch_and_parse_url # Added import
 from scraping.selenium_scraper import scrape_with_selenium # Added import
 from scraping.playwright_scraper import scrape_with_playwright # Added import
-# from src.scraping.llm_scraper import scrape_with_llm # Deferred
 
 # Define the internal state for the Leadership Agent subgraph
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS # Added import
@@ -16,11 +15,11 @@ from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMA
 class LeadershipAgentState(TypedDict):
     input_profile_summary: str
     generated_queries: Optional[List[str]]
-    search_results: Optional[List[SearchResultItem]] # Updated type hint
+    search_results: Optional[List[SearchResultItem]] 
     scraped_data: Optional[List[str]]
     leadership_report: Optional[str]
     error_message: Optional[str]
-    metadata: Optional[List[Dict[str, Any]]] # New field
+    metadata: Optional[List[Dict[str, Any]]] 
 
 # Placeholder Internal Nodes for LeadershipAgent Subgraph
 async def generate_leadership_queries_node(state: LeadershipAgentState) -> LeadershipAgentState:
@@ -216,7 +215,7 @@ leadership_subgraph_app = leadership_graph.compile()
 
 # Wrapper node for the LeadershipAgent subgraph
 async def leadership_agent_node(state: AgentState) -> AgentState: # Changed to async def
-    print("[MainGraph] Calling LeadershipAgent subgraph...")
+    print("\n>>> Entering [LeadershipAgent]...")
 
     # 1. Transform parent state to initial subgraph state
     parent_input = state.get("leader_initial_input")

@@ -11,6 +11,7 @@ ENV/
 
 # Python caches
 __pycache__/
+.ipynb_checkpoints
 *.pyc
 *.pyo
 *.pyd

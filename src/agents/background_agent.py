@@ -160,7 +160,7 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
 
     for item in current_search_results:
         if item.content and len(item.content) >= MIN_CONTENT_LENGTH:
-            print(f"[{agent_name}] Content already exists for '{item.title}', skipping scrape.")
+            print(f"[{agent_name}] Content already exists for '{item.title}', skipping scrape...")
             processed_search_results.append(item)
             continue
 
@@ -184,15 +184,12 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
         if not scraper_used:
             if TEST_MODE:
                 print(f"[{agent_name}] TEST_MODE: Simulating Playwright call for {item.link}.")
-                # To test different scenarios, you can vary what dummy data is returned:
                 # Option A: Simulate successful scrape with dummy content
                 scraped_text = f"Simulated Playwright content for {item.link}"
                 if len(scraped_text) >= MIN_CONTENT_LENGTH: # Check length for consistency
                    scraper_used = "playwright_scraper (simulated)"
-                else: # Should not happen with fixed dummy string but good practice
+                else:
                    scraped_text = None
-                # Option B: Simulate Playwright failing to get enough content or erroring
-                # scraped_text = None 
             else:
                 try:
                     print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
@@ -209,15 +206,12 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
         if not scraper_used:
             if TEST_MODE:
                 print(f"[{agent_name}] TEST_MODE: Simulating Selenium call for {item.link}.")
-                # Option A: Simulate successful scrape
                 scraped_text = f"Simulated Selenium content for {item.link}"
                 if len(scraped_text) >= MIN_CONTENT_LENGTH:
                    scraper_used = "selenium_scraper (simulated)"
                 else:
                    scraped_text = None
-                # Option B: Simulate failure
-                # scraped_text = None
-            else: # Actual call for non-TEST_MODE
+            else:
                 try:
                     print(f"[{agent_name}] Trying selenium_scraper for {item.link}...")
                     scraped_text = await scrape_with_selenium(str(item.link))
@@ -239,7 +233,6 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
         else:
             print(f"[{agent_name}] All scrapers failed or returned insufficient content for {item.link}.")
             processed_search_results.append(item) 
-
         await asyncio.sleep(0)
 
     state['search_results'] = processed_search_results
@@ -267,7 +260,6 @@ async def filter_search_results_node(state: BackgroundAgentState) -> BackgroundA
         return state
 
     profile_summary = state.get('input_profile_summary', '')
-    # Define a specific focus for this agent to guide the LLM in relevance assessment
     agent_specific_focus_description = "Comprehensive background information including education, early career history, affiliations, geographic moves, and origin stories."
 
     filtered_results = await filter_search_results_logic(
@@ -280,7 +272,7 @@ async def filter_search_results_node(state: BackgroundAgentState) -> BackgroundA
     state['search_results'] = filtered_results
     return state
 
-# Instantiate and Build the Subgraph
+# Agent subgraph
 background_graph = StateGraph(BackgroundAgentState)
 
 background_graph.add_node("process_initial_input", process_initial_input_node)
@@ -300,7 +292,7 @@ background_graph.add_edge("compile_details", END)
 background_subgraph_app = background_graph.compile()
 
 async def background_agent_node(state: AgentState) -> AgentState: # Changed to async def
-    print("[MainGraph] Calling BackgroundAgent subgraph...")
+    print("\n>>> Entering [BackgroundAgent]...")
 
     # 1. Transform parent state to initial subgraph state
     parent_input = state.get("leader_initial_input")
@@ -314,15 +306,15 @@ async def background_agent_node(state: AgentState) -> AgentState: # Changed to a
         generated_queries=None,
         search_results=None,
         scraped_data=None,
-        background_details=None, # Subgraph will populate this
-        metadata=list(state.get('metadata') or []), # Pass a shallow copy
+        background_details=None,
+        metadata=list(state.get('metadata') or []), 
         error_message=None
     )
 
     # 2. Invoke the subgraph
     try:
         print(f"[BackgroundAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = await background_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
+        subgraph_final_state = await background_subgraph_app.ainvoke(initial_subgraph_state)
         print(f"[BackgroundAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
     except Exception as e:
         print(f"[BackgroundAgentWrapper] Error invoking subgraph: {e}")
@@ -349,9 +341,7 @@ async def background_agent_node(state: AgentState) -> AgentState: # Changed to a
                  state['error_message'] = ((state.get('error_message') or '') + " BackgroundAgent: No background details generated.").strip()
         
         if subgraph_generated_metadata:
-            state['metadata'] = subgraph_generated_metadata # Assign the list from subgraph (which includes original + new)
-            # print(f"[BackgroundAgentWrapper] Updated parent metadata to: {state['metadata']}")
-        # If subgraph_generated_metadata is None (e.g. subgraph error before metadata init), parent metadata remains unchanged (from initial pass-through)
+            state['metadata'] = subgraph_generated_metadata
 
     else: # Handles case where subgraph_final_state itself is None due to exception
         if not state.get('error_message'): # Don't overwrite specific exception message

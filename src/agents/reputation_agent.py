@@ -200,7 +200,7 @@ reputation_subgraph_app = reputation_graph.compile()
 
 # Wrapper node for the ReputationAgent subgraph
 async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to async def
-    print("[MainGraph] Calling ReputationAgent subgraph...")
+    print("\n>>> Entering [ReputationAgent]...")
 
     # 1. Transform parent state to initial subgraph state
     parent_input = state.get("leader_initial_input")

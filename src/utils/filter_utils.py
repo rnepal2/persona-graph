@@ -19,7 +19,7 @@ DEFAULT_BLOCKED_DOMAINS = [
 async def filter_search_results_logic(
     results: List[SearchResultItem],
     profile_summary: str,
-    agent_query_focus: str, # e.g., "Leadership style and philosophy"
+    agent_query_focus: str,
     blocked_domains_list: Optional[List[str]] = None
 ) -> List[SearchResultItem]:
     """
@@ -29,7 +29,7 @@ async def filter_search_results_logic(
         blocked_domains_list = DEFAULT_BLOCKED_DOMAINS
 
     filtered_results: List[SearchResultItem] = []
-    print(f"[FilterLogic] Starting with {len(results)} results. Blocked domains: {blocked_domains_list}")
+    print(f">>>[FilterLogic] Starting with {len(results)} results. Blocked domains: {blocked_domains_list}")
 
     for item in results:
         # 1. Rule-based filtering (Blocked Domains)
@@ -45,7 +45,10 @@ async def filter_search_results_logic(
         # 2. LLM-based relevance filtering
         system_prompt_relevance = """You are a meticulous relevance assessment assistant. Your task is 
             to determine if a given web search result is relevant to a specific research goal for profiling 
-            an individual. Respond with only "YES" or "NO". Do not provide explanations or any other text."""
+            an individual. Respond with only "YES" or "NO". Do not provide explanations or any other text.
+            Note, that there might be many people with same name that come up in search results, your task 
+            is to carefully assess the relevance of the search result to the specific individual of given profile.
+            """
         
         user_prompt_relevance = f"""
             Original Search Intent/Agent Focus: "{agent_query_focus}"
@@ -55,6 +58,9 @@ async def filter_search_results_logic(
             Title: "{item.title}"
             Link: "{str(item.link)}"
             Snippet: "{item.snippet or 'N/A'}"
+
+            Reminder: This search result should be assessed for this specific individual based on the profile not 
+            just the name, as there might be many people with the same name.
 
             Based on the search intent and the profile summary, is this search result relevant for 
             further investigation? Respond with only YES or NO.
@@ -73,10 +79,9 @@ async def filter_search_results_logic(
             else:
                 print(f"[FilterLogic] Deemed NOT RELEVANT by LLM (Response: '{llm_response.strip()}'): {item.title}")
     
-    print(f"[FilterLogic] Finished filtering. Returning {len(filtered_results)} results.")
+    print(f"<<<[FilterLogic] Finished filtering. Returning {len(filtered_results)} results.")
     return filtered_results
 
-# Example Usage for standalone testing
 if __name__ == '__main__':
     async def test_filter():
         sample_results = [
@@ -88,18 +93,11 @@ if __name__ == '__main__':
             SearchResultItem(title="Facebook Post", link="http://facebook.com/somepost", snippet="A post on Facebook.", source_api="test"),
 
         ]
-        # Mock profile and focus for testing
+        # Mock profile
         test_profile_summary = "Jane Doe is a CEO at ExampleCorp, focusing on AI."
         test_agent_focus = "Jane Doe's leadership style and strategic decisions."
 
         print(f"Original results: {len(sample_results)}")
-        
-        # To test LLM part, you'd need API keys. 
-        # Without keys, get_openai_response returns None, so LLM will filter out items not blocked by domain.
-        # To simulate LLM saying YES for "unknownsite.com" for testing without keys:
-        # You could temporarily modify get_openai_response to return "YES" if prompt contains "unknownsite.com"
-        # or mock the function here using unittest.mock if running this as a true unit test.
-        
         filtered = await filter_search_results_logic(sample_results, test_profile_summary, test_agent_focus)
         
         print("\nFiltered results:")

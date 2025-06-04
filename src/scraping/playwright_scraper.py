@@ -9,25 +9,29 @@ async def scrape_with_playwright(url: str, headless: bool = True) -> Optional[st
     Returns the text content of the body, or None on error.
     """
     print(f"[PlaywrightScraper] Attempting to scrape URL: {url}")
-    browser = None # Initialize for finally block
+    browser = None
 
     try:
         async with async_playwright() as p:
             print("[PlaywrightScraper] Launching browser...")
             try:
-                # Defaulting to Chromium. Others (firefox, webkit) can be specified.
-                browser = await p.chromium.launch(headless=headless)
+                browser = await p.chromium.launch(headless=headless, args=["--no-sandbox", "--disable-blink-features=AutomationControlled"])
             except Exception as e:
-                # This can happen if browser binaries are not installed (e.g., via playwright install)
                 print(f"[PlaywrightScraper] Browser launch failed: {e}")
                 print("[PlaywrightScraper] Consider running 'playwright install' or ensuring browser binaries are accessible.")
                 return None
-            
-            page = await browser.new_page()
-            print(f"[PlaywrightScraper] Navigating to {url}...")
-            await page.goto(url, wait_until="domcontentloaded", timeout=30000) # 30s timeout
 
-            # Basic attempt to accept cookies (very heuristic)
+            context = await browser.new_context(viewport={"width": 1280, "height": 800}, user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/113.0.0.0 Safari/537.36")
+            page = await context.new_page()
+
+            print(f"[PlaywrightScraper] Navigating to {url}...")
+            try:
+                await page.goto(url, wait_until="networkidle", timeout=30000)
+            except PlaywrightTimeoutError:
+                print(f"[PlaywrightScraper] Timeout while loading page: {url}")
+                return None
+
+            # Handle cookie pop-ups
             cookie_buttons_selectors = [
                 "button:has-text('accept all')",
                 "button:has-text('allow all')",
@@ -35,64 +39,60 @@ async def scrape_with_playwright(url: str, headless: bool = True) -> Optional[st
                 "button:has-text('got it')",
                 "button:has-text('i understand')",
                 "div:has-text('accept cookies')",
-                "#onetrust-accept-btn-handler" # Common ID
+                "#onetrust-accept-btn-handler"
             ]
             for selector in cookie_buttons_selectors:
                 try:
-                    print(f"[PlaywrightScraper] Trying cookie button selector: {selector}")
-                    button = page.locator(selector).first # .first to avoid issues if multiple match
-                    await button.click(timeout=5000) # 5s timeout for click
-                    print(f"[PlaywrightScraper] Clicked potential cookie button with selector: {selector}")
-                    await asyncio.sleep(2) # Give time for overlay
-                    break 
-                except PlaywrightTimeoutError:
-                    print(f"[PlaywrightScraper] Timeout clicking cookie button: {selector}")
+                    button = page.locator(selector).first
+                    if await button.is_visible():
+                        await button.click(timeout=3000)
+                        print(f"[PlaywrightScraper] Clicked cookie button: {selector}")
+                        await asyncio.sleep(2)
+                        break
                 except Exception:
-                    # print(f"[PlaywrightScraper] Cookie button not found or other error with selector: {selector}")
-                    pass # Button not found or other error
+                    pass
 
-            # Wait for page body to be present, or a specific main content element
             print("[PlaywrightScraper] Waiting for page content to load...")
-            await page.wait_for_selector("body", timeout=15000) # 15s timeout
+            try:
+                await page.wait_for_selector("body", timeout=15000)
+            except PlaywrightTimeoutError:
+                print("[PlaywrightScraper] Page body not found.")
+                return None
 
-            # Extract text content - Playwright can often get text directly
-            # Try to get main content, otherwise fall back to body
-            main_content_element = page.locator("main").first or page.locator("article").first or page.locator("body")
-            
-            if await main_content_element.count() > 0: # Check if element exists
-                text_content = await main_content_element.inner_text()
-                # Replace multiple newlines/spaces resulting from .inner_text() on complex structures
-                if text_content:
-                     text_content = "\n".join([line.strip() for line in text_content.splitlines() if line.strip()])
+            # Prefer main > article > body
+            for selector in ["main", "article", "body"]:
+                elements = page.locator(selector)
+                if await elements.count() > 0:
+                    text_content = await elements.first.inner_text()
+                    break
             else:
-                text_content = "" # Should not happen if body is present
+                text_content = ""
+
+            if text_content:
+                text_content = "\n".join([line.strip() for line in text_content.splitlines() if line.strip()])
 
             print(f"[PlaywrightScraper] Successfully extracted content. Length: {len(text_content)} chars.")
             return text_content
 
     except PlaywrightTimeoutError as pte:
-        print(f"[PlaywrightScraper] Playwright timeout error during scraping {url}: {pte}")
+        print(f"[PlaywrightScraper] Timeout error for {url}: {pte}")
         return None
     except Exception as e:
-        print(f"[PlaywrightScraper] Error during Playwright scraping for {url}: {e}")
+        print(f"[PlaywrightScraper] General error for {url}: {e}")
         return None
     finally:
         if browser:
             print("[PlaywrightScraper] Closing browser.")
             await browser.close()
 
+
 if __name__ == '__main__':
     async def main_test_playwright():
-        # Test with a site known for dynamic content or cookie banners.
-        # test_url = "https://www.example.com"
-        test_url = "http://web-scraping.dev/dynamic" # A site designed for testing, might not be live
-
+        test_url = "https://www.linkedin.com/in/nepalrabindra/"
         print(f"Attempting to scrape (Playwright): {test_url}")
-        # In a restricted environment, browser setup via 'playwright install' might be needed.
         content = await scrape_with_playwright(test_url)
         if content:
-            print(f"Successfully scraped content (first 500 chars):\n{content[:500]}")
+            print(f"Successfully scraped content: \n{content}")
         else:
             print(f"Failed to scrape content from {test_url} using Playwright (may need 'playwright install' or URL is down).")
-
     asyncio.run(main_test_playwright())

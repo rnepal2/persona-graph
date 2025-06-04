@@ -3,9 +3,9 @@ from typing import List, Optional # Though not strictly needed for this specific
 from agents.common_state import AgentState
 
 def planner_supervisor_node(state: AgentState) -> AgentState:
-    print("[Planner/Supervisor Node] called.")
+    print("\n>>> Entering [Planner/Supervisor]...")
     # In a real scenario, this node would analyze input and decide the first agent.
     # For now, it just sets the first agent to call.
     updated_state = state.copy()
-    updated_state["next_agent_to_call"] = "BackgroundAgent" # Changed to BackgroundAgent
+    updated_state["next_agent_to_call"] = "BackgroundAgent"
     return updated_state

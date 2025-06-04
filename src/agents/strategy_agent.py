@@ -200,7 +200,7 @@ strategy_subgraph_app = strategy_graph.compile()
 
 # Wrapper node for the StrategyAgent subgraph
 async def strategy_agent_node(state: AgentState) -> AgentState: # Changed to async def
-    print("[MainGraph] Calling StrategyAgent subgraph...")
+    print("\n>>> Entering [StrategyAgent]...")
 
     # 1. Transform parent state to initial subgraph state
     parent_input = state.get("leader_initial_input")

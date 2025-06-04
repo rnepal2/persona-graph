@@ -5,7 +5,10 @@ from typing import Optional, Type
 from pydantic import BaseModel
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
-from utils.config import OPENAI_API_KEY, GEMINI_API_KEY
+try:
+    from utils.config import OPENAI_API_KEY, GEMINI_API_KEY
+except:
+    from config import OPENAI_API_KEY, GEMINI_API_KEY
 os.environ["GOOGLE_API_KEY"] = GEMINI_API_KEY
 
 
@@ -176,7 +179,7 @@ async def async_parse_structured_data(
 if __name__ == "__main__":
     print("Testing llm_utils.py (async)...")
     
-    test_user_prompt = "Explain the concept of a Large Language Model in one sentence."
+    test_user_prompt = "Explain how LLM can be used for data parsing with example."
     test_system_prompt = "You are a helpful AI assistant."
     print(f"\nTest User Prompt: \"{test_user_prompt}\"")
     print(f"Test System Prompt: \"{test_system_prompt}\"")
