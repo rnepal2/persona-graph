@@ -1,56 +1,52 @@
-# PersonaGraph
+# PersonaGraph: Executive Profile Enrichment Platform
 
-PersonaGraph is a generative AI-powered solution designed to build detailed professional profiles of senior-level leaders. It leverages multiple AI agents, web search capabilities, and Large Language Models (LLMs) to gather, analyze, and synthesize information from various sources.
+PersonaGraph is a generative AI-powered solution for in-depth profile enrichment of senior professionals using information scraped from web search and advanced LLMs.
 
-## Project Overview
+## Features
+- Input basic executive information (name, title, company, summary, LinkedIn, etc.)
+- Choose AI model (Google Gemini, OpenAI GPT) and search engine (DuckDuckGo, SerpAPI, Tavily)
+- Automated, agentic backend pipeline using LangGraph and multiple specialized agents
+- Modern React.js frontend (ShadCN UI, Tailwind CSS)
+- Flask backend for API and orchestration
+- Extensible for research, recruiting, and due diligence use cases
 
-The goal of PersonaGraph is to automate and enhance the process of understanding a leader's professional background, achievements, leadership style, and public reputation. This can be valuable for companies during succession planning, executive search, or competitive analysis.
+## Project Structure
 
-The system uses a multi-agent approach orchestrated by LangGraph:
-*   **Planner/Supervisor Agent:** Manages the overall workflow based on initial input (e.g., LinkedIn profile).
-*   **LeadershipAgent:** Focuses on aspects related to leadership style, roles, and responsibilities.
-*   **ReputationAgent:** Gathers information about public perception, news, and media presence.
-*   **StrategyAgent:** Investigates strategic decisions, business impact, and financial performance.
-*   **ProfileAggregatorAgent:** Consolidates information from all agents to create a comprehensive profile.
+```
+/                # Project root
+  /backend/      # Python backend (LangGraph, agents, scraping, utils)
+  /public/       # React public assets (favicon, index.html, etc.)
+  /src/          # React app source (App.js, components, etc.)
+  package.json   # React app config
+  requirements.txt # Python backend dependencies
+  ...            # Other config and docs
+```
 
-## Tech Stack (Initial)
+## Getting Started
 
-*   **LLMs:** OpenAI (GPT series), Google Gemini
-*   **Search:** DuckDuckGo API (initially), potentially Google Cloud Search or other SERP APIs
-*   **Web Scraping:** Custom solution using `requests` and `BeautifulSoup4`
-*   **Agent Framework:** LangGraph
-*   **Programming Language:** Python
+### 1. Backend (Python)
+- Install dependencies: `pip install -r requirements.txt`
+- Run the backend (Flask or main.py):
+  ```
+  cd backend
+  python main.py
+  ```
 
-## Setup Instructions
+### 2. Frontend (React)
+- Install dependencies: `npm install`
+- Start the dev server:
+  ```
+  npm start
+  ```
+- Access the app at [http://localhost:3000](http://localhost:3000)
 
-1.  **Clone the repository:**
-    ```bash
-    git clone <repository_url>
-    cd persona-graph
-    ```
-2.  **Create and activate a virtual environment:**
-    ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\Scripts\activate`
-    ```
-3.  **Install dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    ```
-4.  **Set up environment variables:**
-    *   Create a `.env` file in the root directory by copying the `.env.example` file:
-        ```bash
-        cp .env.example .env
-        ```
-    *   Open the `.env` file and add your API keys for OpenAI, Gemini, and any other services.
+## Development Notes
+- The frontend calls backend API endpoints for profile enrichment.
+- Backend uses async agentic graph (LangGraph) for multi-step enrichment.
+- For local development, you may need to set up CORS or use a proxy for API calls.
 
-## Initial Architecture Thoughts
+## License
+MIT
 
-*   The system will be event-driven, with agents passing messages or state updates via the LangGraph framework.
-*   Each agent will have a clearly defined responsibility and set of tools (LLM prompts, search functions, scraping functions).
-*   Configuration for API keys, model names, and other parameters will be managed in `src/config.py` and loaded from environment variables.
-*   Utility modules will be created for common tasks like web search, web scraping, and LLM interactions to promote code reusability.
-
-## Next Steps
-
-Refer to the project plan and upcoming tasks. The immediate next steps involve setting up the basic LangGraph structure and implementing the core utility modules.
+---
+For more details, see the code and comments in each directory.
