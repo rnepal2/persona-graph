@@ -1,4 +1,5 @@
 # src/graph_structure.py
+import nest_asyncio
 from langgraph.graph import StateGraph, START, END
 from agents import (
     AgentState,
@@ -10,7 +11,8 @@ from agents import (
     profile_aggregator_node
 )
 
-# Graph State (AgentState) and Agent Nodes are now imported from src.agents
+# Apply nest_asyncio to handle nested event loops
+nest_asyncio.apply()
 
 # Instantiate the graph
 graph = StateGraph(AgentState) # AgentState is now imported

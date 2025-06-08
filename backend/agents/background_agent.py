@@ -1,26 +1,22 @@
 # src/agents/background_agent.py
 import os
 import asyncio
-from typing import TypedDict, List, Optional, Dict, Any
+import nest_asyncio
 from datetime import datetime
-
-TEST_MODE = True
-
-from langgraph.graph import StateGraph, END
+from typing import TypedDict, List, Optional, Dict, Any
+from langgraph.graph import StateGraph, END 
 from agents.common_state import AgentState
-from utils.llm_utils import get_openai_response, get_gemini_response
+from utils.llm_utils import get_openai_response, get_gemini_response, async_parse_structured_data
 from utils.models import SearchResultItem
 from scraping.basic_scraper import fetch_and_parse_url
 from scraping.selenium_scraper import scrape_with_selenium
 from scraping.playwright_scraper import scrape_with_playwright
 from utils.select_context import extract_relevant_context
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
-
-from utils.llm_utils import async_parse_structured_data
 from pydantic import BaseModel, Field
-from utils.config import GEMINI_API_KEY
-from langchain_google_genai import ChatGoogleGenerativeAI
+nest_asyncio.apply()
 
+TEST_MODE = False  # Changed to False to test actual scraping functionality
 
 class BackgroundAgentState(TypedDict):
     name: str
@@ -86,7 +82,7 @@ async def execute_background_search_node(state: BackgroundAgentState) -> Backgro
     all_results = []
     for query in queries:
         try:
-            results = await perform_duckduckgo_search(query=query, max_results=2)
+            results = await perform_duckduckgo_search(query=query, max_results=3)
             if results:
                 all_results.extend(results)
         except Exception as e:
@@ -174,14 +170,14 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
                     scraped_text = None
         
         if scraper_used:
-            print(f"[{agent_name}] Successfully processed {item.link} using {scraper_used}.")
+            print(f"<<<[{agent_name}] Successfully processed {str(item.link)[:30] + '...' if len(str(item.link)) > 30 else str(item.link)} with {str(scraper_used).upper()}>>>")
             updated_item = item.model_copy(update={
                 'content': scraped_text, 
                 'snippet': item.snippet or (scraped_text[:300]+"..." if scraped_text else None)
             })
             processed_search_results.append(updated_item)
         else:
-            print(f"[{agent_name}] All scrapers failed or returned insufficient content for {item.link}.")
+            print(f"<<<[{agent_name}] All scrapers failed or minimal content for: {str(item.link)[:30] + '...' if len(str(item.link)) > 30 else str(item.link)}>>>")
             processed_search_results.append(item) 
         await asyncio.sleep(0)
 
@@ -244,20 +240,21 @@ async def compile_background_details_node(state: BackgroundAgentState) -> Backgr
 
 async def filter_search_results_node(state: BackgroundAgentState) -> BackgroundAgentState:
     agent_name = "BackgroundAgent"
-    print(f"[{agent_name}] Filtering search results...")
+    print(f">>>[{agent_name}] Filtering search results...")
     current_results = state.get('search_results') or []
     if not current_results:
         print(f"[{agent_name}] No search results to filter.")
         return state
 
     profile_summary = state.get('input_profile_summary', '')
-    agent_specific_focus_description = "Comprehensive background information including education, early career history, affiliations, geographic moves, and origin stories."
+    agent_specific_focus_description = """Comprehensive background information including \
+    education, early career history, affiliations, geographic moves, and origin stories."""
 
     filtered_results = await filter_search_results_logic(
         results=current_results,
         profile_summary=profile_summary,
         agent_query_focus=agent_specific_focus_description,
-        blocked_domains_list=DEFAULT_BLOCKED_DOMAINS # Using the default list
+        blocked_domains_list=DEFAULT_BLOCKED_DOMAINS
     )
     print(f"[{agent_name}] Original results: {len(current_results)}, Filtered results: {len(filtered_results)}")
     state['search_results'] = filtered_results

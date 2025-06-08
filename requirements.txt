@@ -2,6 +2,7 @@ langchain
 langgraph
 openai
 google-generativeai
+langchain-google-genai
 duckduckgo-search
 beautifulsoup4
 requests
@@ -10,3 +11,4 @@ google-search-results
 tavily-python
 selenium
 playwright
+nest-asyncio

@@ -1,4 +1,4 @@
-# PersonaGraph: Executive Profile Enrichment Platform
+# PersonaGraph: Executive Profile Generator
 
 PersonaGraph is a generative AI-powered solution for in-depth profile enrichment of senior professionals using information scraped from web search and advanced LLMs.
 

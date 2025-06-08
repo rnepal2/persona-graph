@@ -1,9 +1,14 @@
 # src/main.py
 import asyncio
+import nest_asyncio
+from multiprocessing import freeze_support
 from src.graph import app
 from src.agents import AgentState
 
-if __name__ == "__main__":
+# Apply nest_asyncio to handle nested event loops
+nest_asyncio.apply()
+
+def main():
     print("Starting PersonaGraph execution...")
     initial_input: AgentState = {
         "leader_initial_input": "https://www.linkedin.com/in/exampleleader",
@@ -19,23 +24,9 @@ if __name__ == "__main__":
 
     print(f"Initial state being passed to the graph: {initial_input}")
     final_state = asyncio.run(app.ainvoke(initial_input))
+    return final_state
 
-    print("\n--- PersonaGraph Execution Finished ---")
-    print("Final State:")
-    for key, value in final_state.items():
-        print(f"  {key}: {value}")
-
-    # Verification
-    if final_state.get("leadership_info"):
-        print(f"\nLeadership Info Collected: {final_state['leadership_info']}")
-    if final_state.get("reputation_info"):
-        print(f"\nReputation Info Collected: {final_state['reputation_info']}")
-    if final_state.get("strategy_info"):
-        print(f"\nStrategy Info Collected: {final_state['strategy_info']}")
-    if final_state.get("aggregated_profile"):
-        print(f"\nAggregated Profile: {final_state['aggregated_profile']}")
-
-    if final_state.get("error_message"):
-        print(f"\nError during execution: {final_state['error_message']}")
-
-    print("\nDone.")
+if __name__ == "__main__":
+    # This is required for multiprocessing on Windows
+    freeze_support()
+    main()

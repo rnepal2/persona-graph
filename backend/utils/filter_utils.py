@@ -30,20 +30,19 @@ async def filter_search_results_logic(
 
     # Step 1: Filter by blocked domains first
     domain_filtered_results: List[SearchResultItem] = []
-    print(f">>>[FilterSearchResult] Starting with {len(results)} results. Blocked domains: {blocked_domains_list}")
+    print(f"\n>>>[FilterSearchResult] Starting with {len(results)} results. Blocked domains: {blocked_domains_list}")
 
     for item in results:
         try:
             domain = item.link.host
             if domain and any(blocked_domain in domain for blocked_domain in blocked_domains_list):
-                print(f"[FilterLogic] Filtering out (blocked domain: {domain}): {item.link}")
+                print(f">>>[FilterLogic] Filtering out (blocked domain: {domain}): {item.link}")
                 continue
             domain_filtered_results.append(item)
         except Exception as e:
-            print(f"[FilterLogic] Error parsing domain for item {item.link}: {e}. Item will be kept for LLM check.")
+            print(f">>>[FilterLogic] Error parsing domain for item {item.link}: {e}. Item will be kept for LLM check.")
             domain_filtered_results.append(item)
-
-    print(f"[FilterLogic] {len(domain_filtered_results)} items passed domain filtering")
+    print(f">>>[FilterLogic] {len(domain_filtered_results)} items passed domain filtering")
 
     # Step 2: Prepare LLM tasks for parallel execution
     async def check_relevance(item: SearchResultItem) -> tuple[SearchResultItem, bool]:
@@ -71,13 +70,13 @@ async def filter_search_results_logic(
         
         is_relevant = False
         if llm_response and llm_response.strip().upper() == "YES":
-            print(f"[RankSearchItem] Deemed RELEVANT by LLM: {item.title}")
+            print(f"[RankSearchItem] RELEVANT by LLM: {item.title}")
             is_relevant = True
         else:
             if llm_response is None:
-                print(f"[RankSearchItem] Deemed NOT RELEVANT (LLM call failed or no response): {item.title}")
+                print(f">>>[RankSearchItem] NOT RELEVANT (LLM call failed or no response), Title: {item.title}")
             else:
-                print(f"[RankSearchItem] Deemed NOT RELEVANT by LLM (Response: '{llm_response.strip()}'): {item.title}")
+                print(f">>>[RankSearchItem] NOT RELEVANT, Title: {item.title}")
         
         return item, is_relevant
 
@@ -88,7 +87,7 @@ async def filter_search_results_logic(
     # Step 4: Filter based on LLM relevance results
     filtered_results = [item for item, is_relevant in relevance_results if is_relevant]
     
-    print(f"<<<[RankSearchItem] Finished filtering. Returning {len(filtered_results)} results.")
+    print(f"<<<[RankSearchItem] Finished filtering. Returning {len(filtered_results)} results>>>\n")
     return filtered_results
 
 if __name__ == '__main__':

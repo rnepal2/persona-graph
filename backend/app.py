@@ -1,16 +1,20 @@
+import re
+import json
+import pydantic
+import uvicorn
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import uvicorn
+from multiprocessing import freeze_support
+from concurrent.futures import ThreadPoolExecutor
 from graph import app as graph_app
 from agents.common_state import AgentState
-import json
-import pydantic
-import re
+import nest_asyncio
+nest_asyncio.apply() 
+
+thread_pool = ThreadPoolExecutor()
 
 app = FastAPI()
-
-# Allow CORS for frontend dev
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,7 +24,7 @@ app.add_middleware(
 )
 
 def make_json_serializable(obj):
-    # Handle SearchResultItem objects directly
+    # Handle SearchResultItem objects
     if hasattr(obj, "__class__") and obj.__class__.__name__ == "SearchResultItem":
         try:
             return {
@@ -38,7 +42,7 @@ def make_json_serializable(obj):
     if isinstance(obj, pydantic.BaseModel):
         try:
             return obj.model_dump()
-        except AttributeError:  # Fallback for pydantic v1
+        except AttributeError: 
             return obj.dict()
         except Exception as e:
             print(f"Warning: Error serializing pydantic model: {str(e)}")
@@ -51,7 +55,6 @@ def make_json_serializable(obj):
         "HttpUrl" in obj.__class__.__name__  # Explicit HttpUrl check
     ):
         try:
-            # For HttpUrl objects, try to get the raw URL string
             if hasattr(obj, "url"):  # pydantic v2
                 return str(obj.url)
             elif hasattr(obj, "__root__"):  # pydantic v1
@@ -67,14 +70,13 @@ def make_json_serializable(obj):
         try:
             result = {}
             for k, v in obj.items():
-                # Handle both the key and value recursively
                 serialized_key = str(k)
                 serialized_value = make_json_serializable(v)
                 result[serialized_key] = serialized_value
             return result
         except Exception as e:
             print(f"Warning: Error serializing dict: {str(e)}")
-            return {str(k): str(v) for k, v in obj.items()}    # Handle lists and tuples
+            return {str(k): str(v) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
         try:
             return [make_json_serializable(i) for i in obj]
@@ -82,7 +84,7 @@ def make_json_serializable(obj):
             print(f"Warning: Error serializing list/tuple: {str(e)}")
             return [str(i) for i in obj]
 
-    # Handle string representations (fallback for objects in metadata)
+    # Handle string representations
     if isinstance(obj, str):
         if obj.startswith("SearchResultItem("):
             try:
