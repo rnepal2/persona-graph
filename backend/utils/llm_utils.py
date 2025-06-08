@@ -75,7 +75,7 @@ except ImportError:
     print("Warning: Google Generative AI library not installed. pip install google-generativeai")
     genai = None
 
-async def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash") -> Optional[str]:
+async def get_gemini_response(prompt: str, model_name: str = "gemini-1.5-flash") -> Optional[str]:
     """
     Gets an asynchronous response from the Google Gemini API.
 
@@ -97,7 +97,7 @@ async def get_gemini_response(prompt: str, model_name: str = "gemini-2.0-flash")
     try:
         genai.configure(api_key=GEMINI_API_KEY)
         model = genai.GenerativeModel(model_name)
-        print(f"Async API call with model: {model_name}")
+        print(f">>>[Gemini] API call with model: {model_name}")
         response = await model.generate_content_async(prompt)
         if response.parts:
             return response.text
@@ -143,7 +143,7 @@ def parse_structured_data(
     return structured_llm.invoke(final_prompt)
 
 llm_gemini = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
+    model="gemini-1.5-flash",
     temperature=0,
     max_tokens=None,
     timeout=None,
@@ -157,7 +157,8 @@ async def async_parse_structured_data(
 ) -> BaseModel:
     """
     Asynchronously extracts structured data from text using the provided LLM and schema.
-    llm: Must be a LangChain chat model supporting with_structured_output (e.g., AzureChatOpenAI, ChatGoogleGenerativeAI).
+    llm: Must be a LangChain chat model supporting with_structured_output 
+    (e.g., AzureChatOpenAI, ChatGoogleGenerativeAI).
     schema: Pydantic BaseModel class defining the output structure.
     text: The input text to extract from.
     Returns: An instance of the schema populated with extracted data.

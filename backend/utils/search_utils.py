@@ -6,7 +6,7 @@ from pydantic import ValidationError
 from utils.models import SearchResultItem
 from utils.config import DUCKDUCKGO_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY
 
-async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[SearchResultItem]:
+async def perform_duckduckgo_search(query: str, max_results: int = 3) -> List[SearchResultItem]:
     """
     Performs an asynchronous web search using DuckDuckGo (via asyncio.to_thread) 
     and returns a list of SearchResultItem objects.
@@ -22,9 +22,7 @@ async def perform_duckduckgo_search(query: str, max_results: int = 5) -> List[Se
     parsed_results: List[SearchResultItem] = []
     ddgs = DDGS()
     try:
-        print(f"Async DuckDuckGo search (with to_thread)") 
-        print(f"Query: {query}, max_results={max_results}")
-
+        print(f">>>[DuckDuckGo Search]  Query: {query}") 
         raw_results = await asyncio.to_thread(ddgs.text, keywords=query, max_results=max_results)
         if raw_results:
             for res_dict in raw_results:

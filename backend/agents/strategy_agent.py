@@ -1,17 +1,19 @@
 # src/agents/strategy_agent.py
-from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
+import asyncio
+from typing import TypedDict, List, Optional, Dict, Any
 from langgraph.graph import StateGraph, END
 from agents.common_state import AgentState
-from utils.llm_utils import get_openai_response
+from pydantic import BaseModel, Field
+from utils.llm_utils import get_gemini_response, async_parse_structured_data
 from utils.models import SearchResultItem
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
 from scraping.basic_scraper import fetch_and_parse_url
 from scraping.selenium_scraper import scrape_with_selenium
 from scraping.playwright_scraper import scrape_with_playwright
-import asyncio
 
-# Define the internal state for the Strategy Agent subgraph
+
 class StrategyAgentState(TypedDict):
+    name: str
     input_profile_summary: str
     generated_queries: Optional[List[str]]
     search_results: Optional[List[SearchResultItem]] # Updated type hint
@@ -25,49 +27,66 @@ async def generate_strategy_queries_node(state: StrategyAgentState) -> StrategyA
     print("[StrategyAgent] Generating strategy queries via LLM...")
 
     profile_summary = state.get("input_profile_summary", "No profile summary provided.")
-    profile_name_placeholder = "the individual" # Or derive from summary
+    profile_name_placeholder = state.get("name", "Executive Name")
 
-    system_prompt = """
-You are a business strategy and financial analyst. Your task is to formulate search queries that will uncover an executive's strategic initiatives, business impact, and involvement in major organizational changes or achievements.
-            """
-    user_prompt = f"""
-Generate 3-5 distinct search queries to identify the strategic contributions and business impact of {profile_name_placeholder}. Their current profile summary is: "{profile_summary}". Focus the queries on finding information related to:
-1. Specific business units, products, or markets they were responsible for and their performance.
-2. Major strategic initiatives they led (e.g., M&A, digital transformation, market expansion, turnarounds).
-3. Quantifiable business results or KPIs achieved under their leadership (e.g., revenue growth, market share changes, innovation milestones).
-4. Their role in company vision, long-term strategy, or significant investments.
+    system_prompt = """You are a business strategy and financial analyst. Your task is to formulate 
+    search queries that will uncover an executive's strategic initiatives, business impact, and 
+    involvement in major organizational changes or achievements."""
 
-Return the queries as a numbered list, each query on a new line.
-            """
+    user_prompt = f"""Generate 3-5 distinct search queries to identify the strategic contributions 
+    and business impact of {profile_name_placeholder}. Their current profile summary is: 
+    "{profile_summary}". Focus the queries on finding information related to:
+    1. Specific business units, products, or markets they were responsible for and their performance.
+    2. Major strategic initiatives they led (e.g., M&A, digital transformation, market expansion, turnarounds).
+    3. Quantifiable business results or KPIs achieved under their leadership (e.g., revenue growth, market share 
+    changes, innovation milestones).
+    4. Their role in company vision, long-term strategy, or significant investments.
 
-    raw_llm_response = await get_openai_response(user_prompt, system_prompt=system_prompt)
+    Return the queries as a numbered list, each query on a new line.
+    """
+    prompt = f"{system_prompt}\n\n{user_prompt}"
+    raw_llm_response = await get_gemini_response(prompt=prompt)
 
-    generated_queries = []
+    class QueriesList(BaseModel):
+        queries: List[str] = Field(description="List of generated queries for strategy research.")
+
     if raw_llm_response:
-        queries = raw_llm_response.strip().split('\n')
-        for q in queries:
-            cleaned_q = q.split('.', 1)[-1].split(')', 1)[-1].strip()
-            if cleaned_q:
-                generated_queries.append(cleaned_q)
-        print(f"[StrategyAgent] LLM generated queries: {generated_queries}")
+        try:
+            parsed_data = await async_parse_structured_data(raw_llm_response, schema=QueriesList)
+            print(f"[StrategyAgent] LLM generated queries: {parsed_data.queries}")
+            generated_queries = parsed_data.queries
+        except Exception as e:
+            print(f"[StrategyAgent] Error parsing queries: {e}")
+            # Fallback to simple text parsing if structured parsing fails
+            lines = raw_llm_response.strip().split('\n')
+            generated_queries = [line.strip().split('. ', 1)[-1] for line in lines if line.strip()]
     else:
         print("[StrategyAgent] LLM call failed or returned no response. Using default placeholder queries.")
-        generated_queries = ["default strategy query 1", "default strategy query 2"]
+        generated_queries = [
+            f"{profile_name_placeholder} strategic initiatives business impact",
+            f"{profile_name_placeholder} business transformation achievements",
+            f"{profile_name_placeholder} company performance leadership"
+        ]
 
     state['generated_queries'] = generated_queries
     return state
 
-def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAgentState:
-    print("[StrategyAgent] Executing search for strategy (placeholder)...")
-    # Dummy results for StrategyAgent
-    dummy_results = [
-        SearchResultItem(title="Jane Doe's Impact on Innovate Inc. Market Share", link="http://financialnews.com/innovate-market-share-doe", snippet="Analysis of market share growth under Jane Doe's strategic initiatives.", source_api="placeholder_strat"),
-        SearchResultItem(title="Innovate Inc. M&A Strategy Led by Jane Doe", link="http://mergerweekly.com/innovate-inc-ma-doe", snippet="Details of recent M&A activities directed by Jane Doe.", source_api="placeholder_strat"),
-        SearchResultItem(title="Jane Doe's Reddit AMA on Company Vision", link="http://reddit.com/r/IAmA/comments/janedoe_ama", snippet="Jane Doe answers questions about company vision on Reddit.", source_api="placeholder_strat"),
-        SearchResultItem(title="Gardening Tips for Urban Dwellers", link="http://urbangarden.com/tips", snippet="How to grow vegetables in small city spaces.", source_api="placeholder_strat"),
-        SearchResultItem(title="Jane Doe's Keynote on Future of Tech", link="http://techconference.com/jane-doe-keynote-summary", snippet="Summary of Jane Doe's keynote speech on future technology trends and company direction.", source_api="placeholder_strat")
-    ]
-    state['search_results'] = dummy_results
+async def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAgentState:
+    print("[StrategyAgent] Running search with DuckDuckGo...")
+    from utils.search_utils import perform_duckduckgo_search
+    
+    queries = state.get('generated_queries') or []
+    all_results = []
+    
+    for query in queries:
+        try:
+            results = await perform_duckduckgo_search(query=query, max_results=2)
+            if results:
+                all_results.extend(results)
+        except Exception as e:
+            print(f"[StrategyAgent] DuckDuckGo search failed for query '{query}': {e}")
+            
+    state['search_results'] = all_results
     return state
 
 async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAgentState:
@@ -147,16 +166,42 @@ async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAge
     print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
-def analyze_strategy_data_node(state: StrategyAgentState) -> StrategyAgentState:
-    print("[StrategyAgent] Analyzing strategy data...")
-    state['strategy_report'] = "Preliminary analysis: Leader's strategy appears innovative." # Placeholder
+# Refactor compile_strategy_report_node to use LLM and filtered search results.
+async def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAgentState:
+    print("[StrategyAgent] Compiling strategy report using LLM and filtered search results...")
+    search_results = state.get('search_results') or []
+    profile_summary = state.get('input_profile_summary', '')
+
+    # Build context from filtered search results (title + content)
+    context_chunks = []
+    for item in search_results:
+        title = getattr(item, 'title', None) or ''
+        content = getattr(item, 'content', None) or ''
+        if title or content:
+            context_chunks.append(f"Title: {title}\nContent: {content}\n")
+    context_str = "\n---\n".join(context_chunks)
+    if not context_str:
+        context_str = "No relevant search results found."
+
+    prompt = f"""
+You are an expert executive strategy analyst. Using the following search results, write a concise, evidence-based summary of the individual's strategic contributions, business impact, M&A activity, product leadership, measurable business results, and boardroom influence. Only use information present in the search results. Do not speculate or invent details.\n\nProfile summary: {profile_summary}\n\nSearch Results:\n{context_str}\n\nStrategy Profile Summary (2-4 paragraphs):
+"""
+    try:
+        llm_response = await get_gemini_response(prompt)
+        report = llm_response.strip() if llm_response else "No strategy information could be generated from the available data."
+    except Exception as e:
+        print(f"[StrategyAgent] Error during LLM call: {e}")
+        report = f"Error generating strategy report: {e}"
+
+    state['strategy_report'] = report
+    # Add metadata item
+    if state.get('metadata') is None:
+        state['metadata'] = []
+    state['metadata'].append({"source": "StrategyAgent", "info": "Strategy report generated"})
+    print("[StrategyAgent] Strategy report generated and added to metadata.")
     return state
 
-def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAgentState:
-    print("[StrategyAgent] Compiling final strategy report...")
-    state['strategy_report'] = (state.get('strategy_report', "") + " Final strategy report compiled.").strip()
-    return state
-
+# Node to filter search results for strategy relevance (if not already present)
 async def filter_search_results_node(state: StrategyAgentState) -> StrategyAgentState:
     agent_name = "StrategyAgent"
     print(f"[{agent_name}] Filtering search results...")
@@ -178,86 +223,72 @@ async def filter_search_results_node(state: StrategyAgentState) -> StrategyAgent
     state['search_results'] = filtered_results
     return state
 
-# Instantiate and Build the Subgraph
+# Update subgraph: remove analyze_data node and its edge, use async compile_strategy_report_node
 strategy_graph = StateGraph(StrategyAgentState)
 
 strategy_graph.add_node("generate_strategy_queries", generate_strategy_queries_node)
 strategy_graph.add_node("execute_search", execute_strategy_search_node)
-strategy_graph.add_node("filter_search_results", filter_search_results_node) # Added node
+strategy_graph.add_node("filter_search_results", filter_search_results_node)
 strategy_graph.add_node("scrape_results", scrape_strategy_results_node)
-strategy_graph.add_node("analyze_data", analyze_strategy_data_node)
-strategy_graph.add_node("compile_report", compile_strategy_report_node)
+strategy_graph.add_node("compile_report", compile_strategy_report_node)  # Now async
 
 strategy_graph.set_entry_point("generate_strategy_queries")
 strategy_graph.add_edge("generate_strategy_queries", "execute_search")
-strategy_graph.add_edge("execute_search", "filter_search_results") # Changed edge
-strategy_graph.add_edge("filter_search_results", "scrape_results") # Added edge
-strategy_graph.add_edge("scrape_results", "analyze_data")
-strategy_graph.add_edge("analyze_data", "compile_report")
+strategy_graph.add_edge("execute_search", "filter_search_results")
+strategy_graph.add_edge("filter_search_results", "scrape_results")
+strategy_graph.add_edge("scrape_results", "compile_report")
 strategy_graph.add_edge("compile_report", END)
 
 strategy_subgraph_app = strategy_graph.compile()
 
-# Wrapper node for the StrategyAgent subgraph
-async def strategy_agent_node(state: AgentState) -> AgentState: # Changed to async def
-    print("\n>>> Entering [StrategyAgent]...")
-
-    # 1. Transform parent state to initial subgraph state
-    parent_input = state.get("leader_initial_input")
-    if parent_input is None:
-        print("[StrategyAgentWrapper] Warning: No leader_initial_input found in parent state.")
-        parent_input = "No specific profile input provided for strategy analysis." # Default
-
-    initial_subgraph_state = StrategyAgentState(
-        input_profile_summary=parent_input,
-        generated_queries=None,
-        search_results=None,
-        scraped_data=None,
-        strategy_report=None,
-        error_message=None,
-        metadata=list(state.get('metadata') or []) # Pass a shallow copy
-    )
-
-    # 2. Invoke the subgraph
+async def strategy_agent_node(state: AgentState): # Changed to async def
+    """Main entry point for StrategyAgent that interfaces with the broader pipeline"""
+    print("\n[StrategyAgent] Starting strategy analysis...")
+    
     try:
-        print(f"[StrategyAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = await strategy_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
-        print(f"[StrategyAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
+        enriched_summary = state.get('leader_initial_input', '')
+        background_info = state.get('background_info', '')
+        
+        if background_info and isinstance(background_info, str):
+            enriched_summary += f"\n\nBackground Information:\n{background_info}"
+        
+        # Initialize state with proper error handling
+        try:
+            strategy_state = StrategyAgentState(
+                name=state.get("name", "Executive Name"),
+                input_profile_summary=enriched_summary,
+                generated_queries=None,
+                search_results=None,
+                scraped_data=None,
+                strategy_report=None,
+                error_message=None,
+                metadata=None
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to initialize StrategyAgentState: {str(e)}")
+        
+        # Run the strategy subgraph with proper async handling
+        try:
+            final_strategy_state = await strategy_subgraph_app.ainvoke(strategy_state)
+            if not final_strategy_state:
+                raise ValueError("Strategy subgraph returned None state")
+            
+            # Update the common state with strategy info
+            state['strategy_info'] = final_strategy_state.get('strategy_report')
+            if final_strategy_state.get('metadata'):
+                state['metadata'] = state.get('metadata', []) + final_strategy_state['metadata']
+            
+            # Set next agent only if successful
+            state['next_agent_to_call'] = "ProfileAggregatorAgent"
+            
+        except Exception as e:
+            raise RuntimeError(f"Strategy subgraph execution failed: {str(e)}")
+            
     except Exception as e:
-        print(f"[StrategyAgentWrapper] Error invoking subgraph: {e}")
-        state['error_message'] = ((state.get('error_message') or '') + f" StrategyAgent failed: {e}").strip()
-        subgraph_final_state = None
-
-    # 3. Transform subgraph result back to parent state
-    if subgraph_final_state:
-        report = subgraph_final_state.get("strategy_report")
-        subgraph_error = subgraph_final_state.get("error_message")
-
-        if subgraph_error:
-            state['error_message'] = ((state.get('error_message') or '') + f" StrategySubgraphError: {subgraph_error}").strip()
-            print(f"[StrategyAgentWrapper] Subgraph reported an error: {subgraph_error}")
-
-        if report:
-            if state.get('strategy_info') is None:
-                state['strategy_info'] = []
-            state['strategy_info'].append(report)
-        else:
-            print("[StrategyAgentWrapper] No report found in subgraph final state.")
-            if not subgraph_error:
-                 state['error_message'] = ((state.get('error_message') or '') + " StrategyAgent: No report generated.").strip()
-    else:
-        if not state.get('error_message'): # Don't overwrite specific exception message
-             state['error_message'] = ((state.get('error_message') or '') + " StrategyAgent: Subgraph invocation failed critically.").strip()
-
-    # Merge metadata from subgraph back to parent state
-    if subgraph_final_state and subgraph_final_state.get("metadata") is not None: # Check if metadata exists and is not None
-        state['metadata'] = subgraph_final_state.get("metadata") # Assign the list from subgraph
-        # print(f"[StrategyAgentWrapper] Updated parent metadata to: {state['metadata']}")
-    # If subgraph_final_state.get("metadata") is None, the parent's metadata (which was copied) remains unchanged in the parent.
-    # If the subgraph intended to clear metadata, it should return an empty list.
-
-    # 4. Set next agent in parent graph
-    print("[StrategyAgentWrapper] Setting next agent to ProfileAggregatorAgent.")
-    state['next_agent_to_call'] = "ProfileAggregatorAgent"
-
+        error_msg = f"Strategy agent failed: {str(e)}"
+        print(f"[StrategyAgent] Error: {error_msg}")
+        state['error_message'] = error_msg
+        # Don't set next_agent_to_call on error to allow error handling in main graph
+        
+    print("[StrategyAgent] Finished processing.")
     return state

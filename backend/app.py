@@ -2,10 +2,11 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
-import asyncio
 from graph import app as graph_app
 from agents.common_state import AgentState
 import json
+import pydantic
+import re
 
 app = FastAPI()
 
@@ -17,6 +18,118 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+def make_json_serializable(obj):
+    # Handle SearchResultItem objects directly
+    if hasattr(obj, "__class__") and obj.__class__.__name__ == "SearchResultItem":
+        try:
+            return {
+                "title": obj.title,
+                "link": str(obj.link) if hasattr(obj.link, "url") else str(obj.link),
+                "snippet": obj.snippet,
+                "source_api": obj.source_api,
+                "content": obj.content
+            }
+        except Exception as e:
+            print(f"Warning: Error serializing SearchResultItem: {str(e)}")
+            return str(obj)
+
+    # Handle Pydantic models
+    if isinstance(obj, pydantic.BaseModel):
+        try:
+            return obj.model_dump()
+        except AttributeError:  # Fallback for pydantic v1
+            return obj.dict()
+        except Exception as e:
+            print(f"Warning: Error serializing pydantic model: {str(e)}")
+            return str(obj)
+            
+    # Handle pydantic-core types (HttpUrl, etc.)
+    if hasattr(obj, "__str__") and (
+        obj.__class__.__module__.startswith("pydantic") or 
+        obj.__class__.__module__.startswith("pydantic_core") or
+        "HttpUrl" in obj.__class__.__name__  # Explicit HttpUrl check
+    ):
+        try:
+            # For HttpUrl objects, try to get the raw URL string
+            if hasattr(obj, "url"):  # pydantic v2
+                return str(obj.url)
+            elif hasattr(obj, "__root__"):  # pydantic v1
+                return str(obj.__root__)
+            else:
+                return str(obj)
+        except Exception as e:
+            print(f"Warning: Error serializing pydantic object {type(obj)}: {str(e)}")
+            return str(obj)
+
+    # Handle dicts
+    if isinstance(obj, dict):
+        try:
+            result = {}
+            for k, v in obj.items():
+                # Handle both the key and value recursively
+                serialized_key = str(k)
+                serialized_value = make_json_serializable(v)
+                result[serialized_key] = serialized_value
+            return result
+        except Exception as e:
+            print(f"Warning: Error serializing dict: {str(e)}")
+            return {str(k): str(v) for k, v in obj.items()}    # Handle lists and tuples
+    if isinstance(obj, (list, tuple)):
+        try:
+            return [make_json_serializable(i) for i in obj]
+        except Exception as e:
+            print(f"Warning: Error serializing list/tuple: {str(e)}")
+            return [str(i) for i in obj]
+
+    # Handle string representations (fallback for objects in metadata)
+    if isinstance(obj, str):
+        if obj.startswith("SearchResultItem("):
+            try:
+                # Try to extract fields using regex (best effort, not perfect)
+                title_match = re.search(r"title='(.*?)'", obj)
+                link_match = re.search(r"link=HttpUrl\('([^']+)'", obj)
+                snippet_match = re.search(r"snippet='(.*?)'", obj)
+                source_api_match = re.search(r"source_api='(.*?)'", obj)
+                content_match = re.search(r"content='(.*?)'", obj)
+                
+                link = None
+                if link_match:
+                    link = link_match.group(1)
+                elif "link=HttpUrl('" in obj:
+                    # Try a more lenient pattern if the first one failed
+                    link = obj.split("link=HttpUrl('")[1].split("'")[0]
+                
+                return {
+                    "title": title_match.group(1) if title_match else None,
+                    "link": link,
+                    "snippet": snippet_match.group(1) if snippet_match else None,
+                    "source_api": source_api_match.group(1) if source_api_match else None,
+                    "content": content_match.group(1) if content_match else None,
+                }
+            except Exception as e:
+                print(f"Warning: Error parsing SearchResultItem string: {str(e)}")
+                return obj
+                
+        if obj.startswith("HttpUrl("):
+            try:
+                if "')" in obj:  # Handle standard format
+                    return obj.split("'")[1]
+                else:  # Handle other formats
+                    return obj.replace("HttpUrl(", "").replace(")", "").strip("'")
+            except Exception:
+                return obj
+                
+        return obj
+
+    # Fallback: try to serialize directly, if fails, convert to str
+    try:
+        json.dumps(obj)
+        return obj
+    except TypeError:
+        if hasattr(obj, "__str__"):
+            return str(obj)
+        return f"Unserializable object of type {type(obj)}"
 
 @app.post("/api/enrich-profile")
 async def enrich_profile(request: Request):
@@ -35,7 +148,8 @@ async def enrich_profile(request: Request):
     }
     try:
         final_state = await graph_app.ainvoke(initial_input)
-        return JSONResponse({"success": True, "result": final_state})
+        serializable_state = make_json_serializable(final_state)
+        return JSONResponse({"success": True, "result": serializable_state})
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)}, status_code=500)
 
@@ -75,6 +189,7 @@ async def websocket_endpoint(websocket: WebSocket):
             if msg.get("type") == "enrich":
                 form = msg.get("data", {})
                 initial_input: AgentState = {
+                    "name": form.get("name"),
                     "leader_initial_input": form.get("summary") or form.get("linkedin") or "",
                     "leadership_info": None,
                     "reputation_info": None,
@@ -87,12 +202,11 @@ async def websocket_endpoint(websocket: WebSocket):
                     "history": None
                 }
                 try:
-                    # Simulate streaming progress (replace with real graph streaming if available)
                     await websocket.send_text(json.dumps({"type": "progress", "data": "Starting enrichment..."}))
-                    # If your graph supports streaming, yield steps here
                     final_state = await graph_app.ainvoke(initial_input)
+                    serializable_state = make_json_serializable(final_state)
                     await websocket.send_text(json.dumps({"type": "progress", "data": "Enrichment complete."}))
-                    await websocket.send_text(json.dumps({"type": "result", "data": final_state}))
+                    await websocket.send_text(json.dumps({"type": "result", "data": serializable_state}))
                 except Exception as e:
                     await websocket.send_text(json.dumps({"type": "error", "data": str(e)}))
             else:

@@ -16,13 +16,14 @@ class AgentState(TypedDict):
         metadata: Optional[List[Dict[str, Any]]] - Trace, provenance, or debug info for auditability.
         history: Optional[List[Dict[str, Any]]] - (Optional) Step-by-step trace of agent actions.
     """
+    name: str
     leader_initial_input: str
     leadership_info: Optional[List[str]]
     reputation_info: Optional[List[str]]
-    strategy_info: Optional[List[str]]
-    background_info: Optional[Dict[str, Any]]
+    strategy_info: Optional[List[str]]    
+    background_info: Optional[str]
     aggregated_profile: Optional[str]
     error_message: Optional[str]
     next_agent_to_call: Optional[str]
-    metadata: Optional[List[Dict[str, Any]]]
-    history: Optional[List[Dict[str, Any]]]  # Optional: for step-by-step trace
+    metadata: Optional[List[Dict[str, Any]]]  
+    history: Optional[List[Dict[str, Any]]]

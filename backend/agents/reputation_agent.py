@@ -2,7 +2,8 @@
 from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
 from langgraph.graph import StateGraph, END
 from agents.common_state import AgentState
-from utils.llm_utils import get_openai_response
+from pydantic import BaseModel, Field
+from utils.llm_utils import get_gemini_response, async_parse_structured_data
 from utils.models import SearchResultItem
 from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
 from scraping.basic_scraper import fetch_and_parse_url
@@ -12,6 +13,7 @@ import asyncio
 
 # Define the internal state for the Reputation Agent subgraph
 class ReputationAgentState(TypedDict):
+    name: str
     input_profile_summary: str
     generated_queries: Optional[List[str]]
     search_results: Optional[List[SearchResultItem]] # Updated type hint
@@ -25,49 +27,64 @@ async def generate_reputation_queries_node(state: ReputationAgentState) -> Reput
     print("[ReputationAgent] Generating reputation queries via LLM...")
 
     profile_summary = state.get("input_profile_summary", "No profile summary provided.")
-    profile_name_placeholder = "the individual" # Or derive from summary
+    profile_name_placeholder = state.get("name", "Executive Name")
 
-    system_prompt = """
-You are a specialist in public reputation and media analysis. Your goal is to devise search queries that gather information on an executive's public image, media presence, and notable recognitions or controversies.
-            """
-    user_prompt = f"""
-Generate 3-5 distinct search queries to assess the public reputation of {profile_name_placeholder}. Their current profile summary is: "{profile_summary}". Focus the queries on:
-1. News articles, press releases, or official announcements mentioning them.
-2. Awards, honors, or significant recognitions they have received.
-3. Any public controversies, legal issues, or criticisms involving them or their companies during their tenure.
-4. Their reputation within their specific industry or among peers.
+    system_prompt = """You are a specialist in public reputation and media analysis. Your goal is 
+    to devise search queries that gather information on an executive's public image, media presence, 
+    and notable recognitions or controversies."""
 
-Return the queries as a numbered list, each query on a new line.
-            """
+    user_prompt = f"""Generate 3-5 distinct search queries to assess the public reputation of 
+    {profile_name_placeholder}. Their current profile summary is: "{profile_summary}". Focus the queries on:
+    1. News articles, press releases, or official announcements mentioning them.
+    2. Awards, honors, or significant recognitions they have received.
+    3. Any public controversies, legal issues, or criticisms involving them or their companies during their tenure.
+    4. Their reputation within their specific industry or among peers.
 
-    raw_llm_response = await get_openai_response(user_prompt, system_prompt=system_prompt)
+    Return the queries as a numbered list, each query on a new line."""
+    
+    prompt = f"{system_prompt}\n\n{user_prompt}"
+    raw_llm_response = await get_gemini_response(prompt=prompt)
 
-    generated_queries = []
+    class QueriesList(BaseModel):
+        queries: List[str] = Field(description="List of generated queries for reputation research.")
+
     if raw_llm_response:
-        queries = raw_llm_response.strip().split('\n')
-        for q in queries:
-            cleaned_q = q.split('.', 1)[-1].split(')', 1)[-1].strip()
-            if cleaned_q:
-                generated_queries.append(cleaned_q)
-        print(f"[ReputationAgent] LLM generated queries: {generated_queries}")
+        try:
+            parsed_data = await async_parse_structured_data(raw_llm_response, schema=QueriesList)
+            print(f"[ReputationAgent] LLM generated queries: {parsed_data.queries}")
+            generated_queries = parsed_data.queries
+        except Exception as e:
+            print(f"[ReputationAgent] Error parsing queries: {e}")
+            # Fallback to simple text parsing if structured parsing fails
+            lines = raw_llm_response.strip().split('\n')
+            generated_queries = [line.strip().split('. ', 1)[-1] for line in lines if line.strip()]
     else:
         print("[ReputationAgent] LLM call failed or returned no response. Using default placeholder queries.")
-        generated_queries = ["default reputation query 1", "default reputation query 2"]
+        generated_queries = [
+            f"{profile_name_placeholder} awards honors recognition achievements",
+            f"{profile_name_placeholder} public reputation media coverage",
+            f"{profile_name_placeholder} industry leadership influence"
+        ]
 
     state['generated_queries'] = generated_queries
     return state
 
-def execute_reputation_search_node(state: ReputationAgentState) -> ReputationAgentState:
-    print("[ReputationAgent] Executing search for reputation (placeholder)...")
-    # Dummy results for ReputationAgent
-    dummy_results = [
-        SearchResultItem(title="Jane Doe Public Praise for Charity Work", link="http://charitytimes.com/jane-doe-award", snippet="Jane Doe recognized for her significant contributions to local charities.", source_api="placeholder_rep"),
-        SearchResultItem(title="Controversy Over Innovate Inc. Environmental Impact", link="http://environmentnews.com/innovate-controversy", snippet="Innovate Inc., led by Jane Doe, faces criticism over environmental practices.", source_api="placeholder_rep"),
-        SearchResultItem(title="Jane Doe's Facebook Page", link="http://facebook.com/janedoeofficial", snippet="Official Facebook page of Jane Doe.", source_api="placeholder_rep"), # Blocked domain
-        SearchResultItem(title="Review of Jane Doe's Favorite Local Bakery", link="http://localfoodblog.com/bakery-review", snippet="A review of a bakery Jane Doe reportedly frequents.", source_api="placeholder_rep"), # Irrelevant
-        SearchResultItem(title="Jane Doe on Twitter", link="http://twitter.com/janedoe", snippet="Jane Doe's tweets on various topics.", source_api="placeholder_rep") # Blocked domain
-    ]
-    state['search_results'] = dummy_results
+async def execute_reputation_search_node(state: ReputationAgentState) -> ReputationAgentState:
+    print("[ReputationAgent] Running search with DuckDuckGo...")
+    from utils.search_utils import perform_duckduckgo_search
+    
+    queries = state.get('generated_queries') or []
+    all_results = []
+    
+    for query in queries:
+        try:
+            results = await perform_duckduckgo_search(query=query, max_results=2)
+            if results:
+                all_results.extend(results)
+        except Exception as e:
+            print(f"[ReputationAgent] DuckDuckGo search failed for query '{query}': {e}")
+            
+    state['search_results'] = all_results
     return state
 
 async def scrape_reputation_results_node(state: ReputationAgentState) -> ReputationAgentState:
@@ -147,16 +164,7 @@ async def scrape_reputation_results_node(state: ReputationAgentState) -> Reputat
     print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
-def analyze_reputation_data_node(state: ReputationAgentState) -> ReputationAgentState:
-    print("[ReputationAgent] Analyzing reputation data...")
-    state['reputation_report'] = "Preliminary analysis: Leader's reputation seems positive." # Placeholder
-    return state
-
-def compile_reputation_report_node(state: ReputationAgentState) -> ReputationAgentState:
-    print("[ReputationAgent] Compiling final reputation report...")
-    state['reputation_report'] = (state.get('reputation_report', "") + " Final reputation report compiled.").strip()
-    return state
-
+# Node to filter search results for reputation relevance (if not already present)
 async def filter_search_results_node(state: ReputationAgentState) -> ReputationAgentState:
     agent_name = "ReputationAgent"
     print(f"[{agent_name}] Filtering search results...")
@@ -178,86 +186,113 @@ async def filter_search_results_node(state: ReputationAgentState) -> ReputationA
     state['search_results'] = filtered_results
     return state
 
-# Instantiate and Build the Subgraph
+# Refactored compile_reputation_report_node to use LLM and filtered search results
+async def compile_reputation_report_node(state: ReputationAgentState) -> ReputationAgentState:
+    print("[ReputationAgent] Compiling reputation report using LLM and filtered search results...")
+    search_results = state.get('search_results') or []
+    profile_summary = state.get('input_profile_summary', '')
+
+    # Build context from filtered search results (title + content)
+    context_chunks = []
+    for item in search_results:
+        title = getattr(item, 'title', None) or ''
+        content = getattr(item, 'content', None) or ''
+        if title or content:
+            context_chunks.append(f"Title: {title}\nContent: {content}\n")
+    context_str = "\n---\n".join(context_chunks)
+    if not context_str:
+        context_str = "No relevant search results found."
+
+    prompt = f"""You are an expert executive reputation analyst. Using the 
+    following search results, write a concise, evidence-based summary 
+    of the individual's public reputation, media perception, awards, 
+    controversies, and overall reputation. Only use information present 
+    in the search results. Do not speculate or invent details.\n\n
+    Profile summary: {profile_summary}\n\n
+    Search Results:\n{context_str}\n\n
+    Reputation Profile Summary (2-4 paragraphs):"""
+    try:
+        llm_response = await get_gemini_response(prompt)
+        report = llm_response.strip() if llm_response else "No reputation information could be generated from the available data."
+    except Exception as e:
+        print(f"[ReputationAgent] Error during LLM call: {e}")
+        report = f"Error generating reputation report: {e}"
+
+    state['reputation_report'] = report
+    # Add metadata item
+    if state.get('metadata') is None:
+        state['metadata'] = []
+    state['metadata'].append({"source": "ReputationAgent", "info": "Reputation report generated"})
+    print("[ReputationAgent] Reputation report generated and added to metadata.")
+    return state
+
+# set up subgraph for ReputationAgent
 reputation_graph = StateGraph(ReputationAgentState)
 
 reputation_graph.add_node("generate_reputation_queries", generate_reputation_queries_node)
 reputation_graph.add_node("execute_search", execute_reputation_search_node)
-reputation_graph.add_node("filter_search_results", filter_search_results_node) # Added node
+reputation_graph.add_node("filter_search_results", filter_search_results_node)
 reputation_graph.add_node("scrape_results", scrape_reputation_results_node)
-reputation_graph.add_node("analyze_data", analyze_reputation_data_node)
 reputation_graph.add_node("compile_report", compile_reputation_report_node)
 
 reputation_graph.set_entry_point("generate_reputation_queries")
 reputation_graph.add_edge("generate_reputation_queries", "execute_search")
-reputation_graph.add_edge("execute_search", "filter_search_results") # Changed edge
-reputation_graph.add_edge("filter_search_results", "scrape_results") # Added edge
-reputation_graph.add_edge("scrape_results", "analyze_data")
-reputation_graph.add_edge("analyze_data", "compile_report")
+reputation_graph.add_edge("execute_search", "filter_search_results")
+reputation_graph.add_edge("filter_search_results", "scrape_results")
+reputation_graph.add_edge("scrape_results", "compile_report")
 reputation_graph.add_edge("compile_report", END)
 
 reputation_subgraph_app = reputation_graph.compile()
 
 # Wrapper node for the ReputationAgent subgraph
 async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to async def
-    print("\n>>> Entering [ReputationAgent]...")
-
-    # 1. Transform parent state to initial subgraph state
-    parent_input = state.get("leader_initial_input")
-    if parent_input is None:
-        print("[ReputationAgentWrapper] Warning: No leader_initial_input found in parent state.")
-        parent_input = "No specific profile input provided for reputation analysis." # Default
-
-    initial_subgraph_state = ReputationAgentState(
-        input_profile_summary=parent_input,
-        generated_queries=None,
-        search_results=None,
-        scraped_data=None,
-        reputation_report=None,
-        error_message=None,
-        metadata=list(state.get('metadata') or []) # Pass a shallow copy
-    )
-
-    # 2. Invoke the subgraph
+    """Main entry point for ReputationAgent that interfaces with the broader pipeline"""
+    print("\n[ReputationAgent] Starting reputation analysis...")
+    
     try:
-        print(f"[ReputationAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = await reputation_subgraph_app.ainvoke(initial_subgraph_state) # Changed to await and ainvoke
-        print(f"[ReputationAgentWrapper] Subgraph finished. Final state: {subgraph_final_state}")
+        enriched_summary = state.get('leader_initial_input', '')
+        background_info = state.get('background_info', '')
+        
+        if background_info and isinstance(background_info, str):
+            enriched_summary += f"\n\nBackground Information:\n{background_info}"
+        
+        # Initialize state with proper error handling
+        try:
+            reputation_state = ReputationAgentState(
+                name=state.get("name", "Executive Name"),
+                input_profile_summary=enriched_summary,
+                generated_queries=None,
+                search_results=None,
+                scraped_data=None,
+                reputation_report=None,
+                error_message=None,
+                metadata=None
+            )
+        except Exception as e:
+            raise ValueError(f"Failed to initialize ReputationAgentState: {str(e)}")
+        
+        # Run the reputation subgraph with proper async handling
+        try:
+            final_reputation_state = await reputation_subgraph_app.ainvoke(reputation_state)
+            if not final_reputation_state:
+                raise ValueError("Reputation subgraph returned None state")
+            
+            # Update the common state with reputation info
+            state['reputation_info'] = final_reputation_state.get('reputation_report')
+            if final_reputation_state.get('metadata'):
+                state['metadata'] = state.get('metadata', []) + final_reputation_state['metadata']
+            
+            # Set next agent only if successful
+            state['next_agent_to_call'] = "StrategyAgent"
+            
+        except Exception as e:
+            raise RuntimeError(f"Reputation subgraph execution failed: {str(e)}")
+            
     except Exception as e:
-        print(f"[ReputationAgentWrapper] Error invoking subgraph: {e}")
-        state['error_message'] = ((state.get('error_message') or '') + f" ReputationAgent failed: {e}").strip()
-        subgraph_final_state = None
-
-    # 3. Transform subgraph result back to parent state
-    if subgraph_final_state:
-        report = subgraph_final_state.get("reputation_report")
-        subgraph_error = subgraph_final_state.get("error_message")
-
-        if subgraph_error:
-            state['error_message'] = ((state.get('error_message') or '') + f" ReputationSubgraphError: {subgraph_error}").strip()
-            print(f"[ReputationAgentWrapper] Subgraph reported an error: {subgraph_error}")
-
-        if report:
-            if state.get('reputation_info') is None:
-                state['reputation_info'] = []
-            state['reputation_info'].append(report)
-        else:
-            print("[ReputationAgentWrapper] No report found in subgraph final state.")
-            if not subgraph_error:
-                 state['error_message'] = ((state.get('error_message') or '') + " ReputationAgent: No report generated.").strip()
-    else:
-        if not state.get('error_message'):
-             state['error_message'] = ((state.get('error_message') or '') + " ReputationAgent: Subgraph invocation failed critically.").strip()
-
-    # Merge metadata from subgraph back to parent state
-    if subgraph_final_state and subgraph_final_state.get("metadata") is not None: # Check if metadata exists and is not None
-        state['metadata'] = subgraph_final_state.get("metadata") # Assign the list from subgraph
-        # print(f"[ReputationAgentWrapper] Updated parent metadata to: {state['metadata']}")
-    # If subgraph_final_state.get("metadata") is None, the parent's metadata (which was copied) remains unchanged in the parent.
-    # If the subgraph intended to clear metadata, it should return an empty list.
-
-    # 4. Set next agent in parent graph
-    print("[ReputationAgentWrapper] Setting next agent to StrategyAgent.")
-    state['next_agent_to_call'] = "StrategyAgent"
-
+        error_msg = f"Reputation agent failed: {str(e)}"
+        print(f"[ReputationAgent] Error: {error_msg}")
+        state['error_message'] = error_msg
+        # Don't set next_agent_to_call on error to allow error handling in main graph
+        
+    print("[ReputationAgent] Finished processing.")
     return state
