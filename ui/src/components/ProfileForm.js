@@ -6,14 +6,20 @@ import { FaSearch } from 'react-icons/fa';
 const ProfileForm = ({ 
   form, 
   loading, 
+  wsState,
   llmOptions, 
   searchOptions, 
-  handleChange, 
-  handleSubmit 
+  setForm,
+  onSubmit 
 }) => {
+  const handleChange = (e) => {
+    setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
+  };
+
   return (
-    <form onSubmit={handleSubmit}>
+    <form onSubmit={onSubmit}>
       {/* Input Section */}
+      <span className='mb-4 text-md font-semibold'>Basic Information</span>
       <Card className="shadow border border-slate-200 mb-5">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -72,6 +78,7 @@ const ProfileForm = ({
       </Card>
 
       {/* Settings & Search Button Section */}
+      <span className='mb-4 font-semibold'>Settings</span>
       <Card className="shadow border border-slate-200">
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

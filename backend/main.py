@@ -4,9 +4,14 @@ import nest_asyncio
 from multiprocessing import freeze_support
 from src.graph import app
 from src.agents import AgentState
+import sys
 
 # Apply nest_asyncio to handle nested event loops
 nest_asyncio.apply()
+
+# Set event loop policy for Windows to support Playwright subprocesses
+if sys.platform.startswith("win"):
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 def main():
     print("Starting PersonaGraph execution...")

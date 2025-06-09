@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import Card from "./components/ui/Card";
 import { useProfileCache } from './hooks/useProfileCache';
 import ResultsDisplay from './components/ResultsDisplay';
@@ -245,44 +246,99 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen py-5" style={meshBgStyle}>
-      <div className="max-w-4xl mx-auto space-y-5">
-        {/* Top Section: Title & Banner */}
-        <Card className="shadow-lg border border-slate-200 text-center py-8">
-          <h2 className="text-3xl font-bold mb-2 text-primary">Executive Profile Generator</h2>
-          <div className="text-base text-muted-foreground">
-            Conduct in-depth executive profile enrichment powered by AI and Web Search
-          </div>
-        </Card>
-        {/* Form Section */}
-        <ProfileForm 
-          form={form}
-          loading={loading}
-          llmOptions={llmOptions}
-          searchOptions={searchOptions}
-          handleChange={handleChange}
-          handleSubmit={handleSubmit}
-        />
-        {/* Progress Section */}
-        {progress.length > 0 && (
-          <Card className="shadow border border-slate-200 p-5">
-            <h3 className="text-lg font-semibold mb-2">Progress</h3>
-            <ul className="text-sm list-disc pl-5">
-              {progress.map((msg, i) => (
-                <li key={i}>{msg}</li>
-              ))}
-            </ul>
-          </Card>
-        )}
-        {/* Result Section */}
-        {result && <ResultsDisplay result={result} />}
-        {/* Error Section */}
-        {error && (
-          <Card className="shadow border border-slate-200 p-5 bg-red-50">
-            <h3 className="text-xl font-semibold mb-3 text-red-600">Error</h3>
-            <p className="text-red-800 text-sm">{error}</p>
-          </Card>
-        )}
+    <div className="min-h-screen text-gray-800" style={meshBgStyle}>
+      <div className="container mx-auto px-4 py-8">
+        <motion.div 
+          layout
+          className={`
+            grid w-full transition-all duration-500 ease-in-out
+            ${result 
+              ? 'md:grid-cols-2 md:gap-16' // 4rem gap (16 in Tailwind)
+              : 'grid-cols-1 max-w-3xl mx-auto'
+            }
+          `}
+        >
+          {/* Left column - Form and Progress */}
+          <motion.div
+            layout
+            className="w-full space-y-6"
+            initial={{ opacity: 1 }}
+            animate={{ opacity: 1 }}
+          >
+            <Card className="p-6 shadow-lg">
+              <h1 className="text-3xl text-red-700 font-bold mb-3">Persona-Graph: Executive Profile Generator</h1>
+              <p className="text-gray-600 font-semibold mb-6">
+                Generate an in-depth Executive Profile with Web Search and AI
+              </p>
+              <ProfileForm
+                form={form}
+                setForm={setForm}
+                loading={loading}
+                wsState={wsState}
+                llmOptions={llmOptions}
+                searchOptions={searchOptions}
+                onSubmit={handleSubmit}
+              />
+            </Card>
+
+            {/* Progress Section */}
+            {loading && (
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="space-y-4"
+              >
+                <Card className="p-6">
+                  <h2 className="text-xl font-semibold mb-4 flex items-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Processing
+                  </h2>
+                  <div className="space-y-2">
+                    {progress.map((p, i) => (
+                      <motion.div
+                        key={i}
+                        initial={{ opacity: 0, x: -20 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        className="text-sm text-gray-600"
+                      >
+                        {p}
+                      </motion.div>
+                    ))}
+                  </div>
+                </Card>
+              </motion.div>
+            )}
+
+            {error && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className="bg-red-50 border-l-4 border-red-400 p-4 rounded"
+              >
+                <p className="text-red-700">{error}</p>
+              </motion.div>
+            )}
+          </motion.div>
+
+          {/* Right column - Results */}
+          <AnimatePresence mode="wait">
+            {result && (
+              <motion.div
+                layout
+                initial={{ opacity: 0, x: 50 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 50 }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+                className="w-full space-y-6"
+              >
+                <ResultsDisplay result={result} />
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </motion.div>
       </div>
     </div>
   );
