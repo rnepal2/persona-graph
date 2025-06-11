@@ -79,7 +79,7 @@ async def generate_leadership_queries_node(state: LeadershipAgentState) -> Leade
 
 async def execute_search_node(state: LeadershipAgentState) -> LeadershipAgentState:
     print("[LeadershipAgent] Running search with DuckDuckGo...")
-    from utils.duckduckgo_search import perform_duckduckgo_search
+    from search.duckduckgo_search import perform_duckduckgo_search
     
     queries = state.get('generated_queries') or []
     all_results = []
@@ -232,8 +232,7 @@ async def compile_report_node(state: LeadershipAgentState) -> LeadershipAgentSta
     print("[LeadershipAgent] Leadership report generated and added to metadata.")
     return state
 
-# ---
-# Update subgraph: remove analyze_data_node and its edge, use async compile_report_node
+# LeadershipAgent Subgraph
 leadership_graph = StateGraph(LeadershipAgentState)
 
 leadership_graph.add_node("generate_leadership_queries", generate_leadership_queries_node)

@@ -16,7 +16,6 @@ from utils.filter_utils import filter_search_results_logic
 from utils.filter_utils import DEFAULT_BLOCKED_DOMAINS
 nest_asyncio.apply()
 
-# Define the internal state for the Reputation Agent subgraph
 class ReputationAgentState(TypedDict):
     name: str
     input_profile_summary: str
@@ -27,7 +26,6 @@ class ReputationAgentState(TypedDict):
     error_message: Optional[str]
     metadata: Optional[List[Dict[str, Any]]] # New field
 
-# Placeholder Internal Nodes for ReputationAgent Subgraph
 async def generate_reputation_queries_node(state: ReputationAgentState) -> ReputationAgentState:
     print("[ReputationAgent] Generating reputation queries via LLM...")
 
@@ -76,7 +74,7 @@ async def generate_reputation_queries_node(state: ReputationAgentState) -> Reput
 
 async def execute_reputation_search_node(state: ReputationAgentState) -> ReputationAgentState:
     print("[ReputationAgent] Running search with DuckDuckGo...")
-    from utils.duckduckgo_search import perform_duckduckgo_search
+    from search.duckduckgo_search import perform_duckduckgo_search
     
     queries = state.get('generated_queries') or []
     all_results = []
@@ -169,7 +167,6 @@ async def scrape_reputation_results_node(state: ReputationAgentState) -> Reputat
     print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
-# Node to filter search results for reputation relevance (if not already present)
 async def filter_search_results_node(state: ReputationAgentState) -> ReputationAgentState:
     agent_name = "ReputationAgent"
     print(f"[{agent_name}] Filtering search results...")
@@ -191,7 +188,6 @@ async def filter_search_results_node(state: ReputationAgentState) -> ReputationA
     state['search_results'] = filtered_results
     return state
 
-# Refactored compile_reputation_report_node to use LLM and filtered search results
 async def compile_reputation_report_node(state: ReputationAgentState) -> ReputationAgentState:
     print("[ReputationAgent] Compiling reputation report using LLM and filtered search results...")
     search_results = state.get('search_results') or []
@@ -231,7 +227,7 @@ async def compile_reputation_report_node(state: ReputationAgentState) -> Reputat
     print("[ReputationAgent] Reputation report generated and added to metadata.")
     return state
 
-# set up subgraph for ReputationAgent
+# Set up subgraph for ReputationAgent
 reputation_graph = StateGraph(ReputationAgentState)
 
 reputation_graph.add_node("generate_reputation_queries", generate_reputation_queries_node)
@@ -252,7 +248,7 @@ reputation_subgraph_app = reputation_graph.compile()
 # Wrapper node for the ReputationAgent subgraph
 async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to async def
     """Main entry point for ReputationAgent that interfaces with the broader pipeline"""
-    print("\n[ReputationAgent] Starting reputation analysis...")
+    print("\n>>>[ReputationAgent] Starting reputation analysis...")
     
     try:
         enriched_summary = state.get('leader_initial_input', '')
@@ -297,7 +293,6 @@ async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to a
         error_msg = f"Reputation agent failed: {str(e)}"
         print(f"[ReputationAgent] Error: {error_msg}")
         state['error_message'] = error_msg
-        # Don't set next_agent_to_call on error to allow error handling in main graph
         
     print("[ReputationAgent] Finished processing.")
     return state

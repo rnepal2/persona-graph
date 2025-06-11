@@ -11,11 +11,10 @@ from agents import (
     profile_aggregator_node
 )
 
-# Apply nest_asyncio to handle nested event loops
 nest_asyncio.apply()
 
-# Instantiate the graph
-graph = StateGraph(AgentState) # AgentState is now imported
+# Instantiate graph
+graph = StateGraph(AgentState)
 
 # Add nodes
 graph.add_node("planner_supervisor_node", planner_supervisor_node)
@@ -28,8 +27,7 @@ graph.add_node("profile_aggregator_node", profile_aggregator_node)
 # Set entry point
 graph.add_edge(START, "planner_supervisor_node")
 
-# Conditional routing function
-# AgentState for type hinting is imported from src.agents
+# Conditional routing
 def should_continue(state: AgentState) -> str:
     if state.get("error_message"):
         print("Error detected, routing to END.")
@@ -49,7 +47,7 @@ def should_continue(state: AgentState) -> str:
         return "strategy_agent_node"
     elif next_agent == "ProfileAggregatorAgent":
         return "profile_aggregator_node"
-    else: # Includes None or any other unexpected value, or if planner didn't set (should not happen)
+    else:
         print(f"No specific valid next agent, or end of defined flow. Next agent: {next_agent}. Routing to END.")
         return END
 
@@ -58,7 +56,6 @@ graph.add_conditional_edges(
     "planner_supervisor_node",
     should_continue,
 )
-# Add conditional edge for the new BackgroundAgent
 graph.add_conditional_edges(
     "background_agent_node",
     should_continue,
@@ -75,7 +72,6 @@ graph.add_conditional_edges(
     "strategy_agent_node",
     should_continue,
 )
-# The profile_aggregator_node now directly leads to END.
 graph.add_edge("profile_aggregator_node", END)
 
 

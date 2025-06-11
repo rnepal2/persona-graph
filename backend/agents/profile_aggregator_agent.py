@@ -4,10 +4,6 @@ from agents.common_state import AgentState
 from utils.llm_utils import get_gemini_response
 
 async def get_aggregated_profile(state: AgentState) -> str:
-    """
-    Extracts the aggregated profile from the agent state.
-    If not available, returns a placeholder message.
-    """
     name = state.get("name", "Executive Name")
     background = state.get("background_info", {})
     leadership = state.get("leadership_info", [])
@@ -43,7 +39,7 @@ async def get_aggregated_profile(state: AgentState) -> str:
     return "No aggregated profile could be created!"
 
 async def profile_aggregator_node(state: AgentState) -> AgentState:
-    print("[Profile Aggregator Node] called.")
+    print(">>>[Profile Aggregator Node] called.")
     updated_state = state.copy()
     updated_state["aggregated_profile"] = await get_aggregated_profile(updated_state)
     updated_state["next_agent_to_call"] = None

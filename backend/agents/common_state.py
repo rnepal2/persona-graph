@@ -1,9 +1,9 @@
 # src/agents/common_state.py
-from typing import TypedDict, List, Optional, Dict, Any # Ensure Any is imported
+from typing import TypedDict, List, Optional, Dict, Any
 
 class AgentState(TypedDict):
     """
-    State object passed between agents in the persona-graph pipeline.
+    Common state object passed between agents
     Fields:
         leader_initial_input: str - Initial input (e.g., LinkedIn URL or name).
         leadership_info: Optional[List[str]] - Extracted leadership-related info.

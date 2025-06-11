@@ -26,7 +26,6 @@ class StrategyAgentState(TypedDict):
     error_message: Optional[str]
     metadata: Optional[List[Dict[str, Any]]] # New field
 
-# Placeholder Internal Nodes for StrategyAgent Subgraph
 async def generate_strategy_queries_node(state: StrategyAgentState) -> StrategyAgentState:
     print("[StrategyAgent] Generating strategy queries via LLM...")
 
@@ -77,7 +76,7 @@ async def generate_strategy_queries_node(state: StrategyAgentState) -> StrategyA
 
 async def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAgentState:
     print("[StrategyAgent] Running search with DuckDuckGo...")
-    from utils.duckduckgo_search import perform_duckduckgo_search
+    from search.duckduckgo_search import perform_duckduckgo_search
     
     queries = state.get('generated_queries') or []
     all_results = []
@@ -170,7 +169,6 @@ async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAge
     print(f"[{agent_name}] Finished scraping. Processed {len(current_search_results)} items.")
     return state
 
-# Refactor compile_strategy_report_node to use LLM and filtered search results.
 async def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAgentState:
     print("[StrategyAgent] Compiling strategy report using LLM and filtered search results...")
     search_results = state.get('search_results') or []
@@ -187,9 +185,14 @@ async def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAge
     if not context_str:
         context_str = "No relevant search results found."
 
-    prompt = f"""
-You are an expert executive strategy analyst. Using the following search results, write a concise, evidence-based summary of the individual's strategic contributions, business impact, M&A activity, product leadership, measurable business results, and boardroom influence. Only use information present in the search results. Do not speculate or invent details.\n\nProfile summary: {profile_summary}\n\nSearch Results:\n{context_str}\n\nStrategy Profile Summary (2-4 paragraphs):
-"""
+    prompt = f"""You are an expert executive strategy analyst. Using the following search results, 
+    write a concise, evidence-based summary of the individual's strategic contributions, business impact, 
+    M&A activity, product leadership, measurable business results, and boardroom influence. Only use 
+    information present in the search results. Do not speculate or invent details.
+    \n\nProfile summary: {profile_summary}\n\n
+    Search Results:\n{context_str}\n\n
+    Strategy Profile Summary (2-4 paragraphs):
+    """
     try:
         llm_response = await get_gemini_response(prompt)
         report = llm_response.strip() if llm_response else "No strategy information could be generated from the available data."
@@ -205,7 +208,6 @@ You are an expert executive strategy analyst. Using the following search results
     print("[StrategyAgent] Strategy report generated and added to metadata.")
     return state
 
-# Node to filter search results for strategy relevance (if not already present)
 async def filter_search_results_node(state: StrategyAgentState) -> StrategyAgentState:
     agent_name = "StrategyAgent"
     print(f"[{agent_name}] Filtering search results...")
@@ -247,7 +249,7 @@ strategy_subgraph_app = strategy_graph.compile()
 
 async def strategy_agent_node(state: AgentState): # Changed to async def
     """Main entry point for StrategyAgent that interfaces with the broader pipeline"""
-    print("\n[StrategyAgent] Starting strategy analysis...")
+    print("\n>>>[StrategyAgent] Starting strategy analysis...")
     
     try:
         enriched_summary = state.get('leader_initial_input', '')
@@ -292,7 +294,6 @@ async def strategy_agent_node(state: AgentState): # Changed to async def
         error_msg = f"Strategy agent failed: {str(e)}"
         print(f"[StrategyAgent] Error: {error_msg}")
         state['error_message'] = error_msg
-        # Don't set next_agent_to_call on error to allow error handling in main graph
         
     print("[StrategyAgent] Finished processing.")
     return state

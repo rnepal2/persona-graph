@@ -1,5 +1,3 @@
-# This file makes Python treat the 'scraping' directory as a package.
-
 from .basic_scraper import fetch_and_parse_url
 from .selenium_scraper import scrape_with_selenium
 from .playwright_scraper import scrape_with_playwright
@@ -9,5 +7,5 @@ __all__ = [
     "fetch_and_parse_url",
     "scrape_with_selenium",
     "scrape_with_playwright",
-    "scrape_with_llm" # Added to __all__
+    "scrape_with_llm"
 ]
