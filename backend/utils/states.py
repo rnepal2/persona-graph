@@ -1,9 +1,10 @@
-# shared.py
+# states.py
+# New idea for more targeted information gathering and analysis
+
 from __future__ import annotations
 from typing import List, Dict, Optional
 from pydantic import BaseModel, Field
 from datetime import date
-
 
 class Source(BaseModel):
     url: str

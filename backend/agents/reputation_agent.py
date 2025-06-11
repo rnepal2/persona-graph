@@ -206,12 +206,13 @@ async def compile_reputation_report_node(state: ReputationAgentState) -> Reputat
 
     prompt = f"""You are an expert executive reputation analyst. Using the 
     following search results, write a concise, evidence-based summary 
-    of the individual's public reputation, media perception, awards, 
+    of the individual's public reputation, peer recognition, media perception, awards, 
     controversies, and overall reputation. Only use information present 
-    in the search results. Do not speculate or invent details.\n\n
+    in the search results relvant for the specific executive. 
+    Do not speculate or invent details.\n\n
     Profile summary: {profile_summary}\n\n
     Search Results:\n{context_str}\n\n
-    Reputation Profile Summary (2-4 paragraphs):"""
+    Reputation Profile Summary (2-4 paragraphs, depending upon the provided context information):"""
     try:
         llm_response = await get_gemini_response(prompt)
         report = llm_response.strip() if llm_response else "No reputation information could be generated from the available data."

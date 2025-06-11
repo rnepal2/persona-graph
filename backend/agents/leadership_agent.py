@@ -36,13 +36,18 @@ async def generate_leadership_queries_node(state: LeadershipAgentState) -> Leade
     search queries to uncover comprehensive information about an individual's leadership style, 
     decision-making approach, and team management capabilities."""
 
-    user_prompt = f"""Generate 3-5 distinct search queries to find information about the 
+    user_prompt = f"""Generate 3-7 distinct search queries to find information about the 
     leadership qualities and style of {profile_name_placeholder}. Their current profile 
     summary is: "{profile_summary}". Focus on queries that would find:
     1. Descriptions of their leadership style or management philosophy (e.g., articles, interviews).
     2. Examples of significant decisions they made and the reported outcomes.
     3. Information about their team building, mentorship, or communication style.
     4. Quotes from them or about them regarding their leadership.
+
+    Importantly, if the executive holds or held a DRI role for a business or product in a large company,
+    include queries (one or more depending upon their leadership history) that will gather information 
+    on how the corresponding product or business performed during their tenure. Any insight that informs 
+    measurable outcomes of their leadership is highly valuabe.
 
     Return the queries as a numbered list, each query on a new line."""
     
@@ -214,10 +219,17 @@ async def compile_report_node(state: LeadershipAgentState) -> LeadershipAgentSta
     prompt = f"""You are an expert executive profile analyst. Using the following search 
     results, write a concise, evidence-based summary of the individual's leadership style, 
     decision-making, and team interactions. Only use information present in the search 
-    results. Do not speculate or invent details.\n\nProfile summary: 
-    {profile_summary}\n\nSearch Results:\n{context_str}
-    \n\nLeadership Profile Summary (2-4 paragraphs):"""
+    results. Do not speculate or invent details.\n\n
+    Profile summary: 
+    {profile_summary}\n\n
+    Search Results:\n{context_str}\n\n
 
+    If the executive holds or held DRI roles for a business or product in a large company,
+    make sure to include measurable outcome of their leadership based on the performance of
+    the business or product they led if related information is gathered through the search and 
+    is present in the context provided to you above.
+
+    Leadership Profile Summary (2-4 paragraphs, depending upon available information):"""
     try:
         llm_response = await get_gemini_response(prompt=prompt)
         report = llm_response.strip() if llm_response else "No leadership information could be generated from the available data."
@@ -301,5 +313,5 @@ async def leadership_agent_node(state: AgentState) -> AgentState:
         state['error_message'] = error_msg
         # Don't set next_agent_to_call on error to allow error handling in main graph
         
-    print("[LeadershipAgent] Finished processing.")
+    print(">>>[LeadershipAgent] Finished processing.")
     return state

@@ -186,12 +186,13 @@ async def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAge
         context_str = "No relevant search results found."
 
     prompt = f"""You are an expert executive strategy analyst. Using the following search results, 
-    write a concise, evidence-based summary of the individual's strategic contributions, business impact, 
-    M&A activity, product leadership, measurable business results, and boardroom influence. Only use 
-    information present in the search results. Do not speculate or invent details.
-    \n\nProfile summary: {profile_summary}\n\n
+    write a concise, evidence-based summary of the individual's strategic contributions,
+    M&A activity, product leadership, strategic initaitves, and boardroom influence. Only use 
+    information present in the search results relevant for the related executive. 
+    Do not speculate or invent any details.\n\n
+    Profile summary: {profile_summary}\n\n
     Search Results:\n{context_str}\n\n
-    Strategy Profile Summary (2-4 paragraphs):
+    Strategy Profile Summary (2-4 paragraphs, depending upon the provided context information):
     """
     try:
         llm_response = await get_gemini_response(prompt)

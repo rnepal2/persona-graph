@@ -24,6 +24,11 @@ Agents use Playwright-based and LLM-powered scrapers to extract and process web 
 ## UI (Frontend)
 The frontend is a minimal React.js app (ShadCN UI, Tailwind CSS) for inputting executive details, selecting AI/search options, and viewing enriched profiles. It connects to the backend via WebSocket for real-time progress and results. 
 
+### Example Output
+Below is a snapshot of UI showing the result of executive profile search:
+
+![Example Output](public/Profile%20Snapshot.png)
+
 ## Getting Started
 ---
 ### 1. Backend (Python)
