@@ -36,7 +36,7 @@ Below is a snapshot of UI showing the result of executive profile search:
 - Run the backend:
   ```
   cd backend
-  python main.py
+  python app.py
   ```
 
 ### 2. Frontend (React)
@@ -49,8 +49,8 @@ Below is a snapshot of UI showing the result of executive profile search:
 
 ## Development Notes
 - The frontend calls backend API endpoints for profile enrichment.
-- Backend uses async agentic graph (LangGraph) for multi-step enrichment.
-- For local development, you may need to set up CORS or use a proxy for API calls.
+- Backend uses async agentic graph (LangGraph) with multi-agent web search and AI assisted profile enrichment.
+- TODO: implement streaming to update intermediate agents ouputs
 
 ## License
 MIT
