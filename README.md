@@ -27,7 +27,7 @@ The frontend is a minimal React.js app (ShadCN UI, Tailwind CSS) for inputting e
 ### Example Output
 Below is a snapshot of UI showing the result of executive profile search:
 
-![Example Output](public/Profile%20Snapshot.png)
+<img src="ui/public/profile-snapshot.png" alt="Example Executive Profile" width="800"/>
 
 ## Getting Started
 ---
