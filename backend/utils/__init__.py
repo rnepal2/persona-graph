@@ -1,7 +1,7 @@
 # This file makes Python treat the 'utils' directory as a package.
 # src/utils/__init__.py
 
-from .search_utils import perform_duckduckgo_search
+from .duckduckgo_search import perform_duckduckgo_search
 from .llm_utils import get_openai_response, get_gemini_response
 from .models import SearchResultItem
 from .serpapi_search import perform_serpapi_search

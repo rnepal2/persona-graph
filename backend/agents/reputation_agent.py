@@ -6,15 +6,14 @@ from typing import TypedDict, List, Optional, Dict, Any
 from langgraph.graph import StateGraph, END
 from agents.common_state import AgentState
 from pydantic import BaseModel, Field
-from utils.llm_utils import get_gemini_response, async_parse_structured_data
+from utils.llm_utils import get_gemini_response, get_openai_response
+from utils.llm_utils import async_parse_structured_data
 from utils.models import SearchResultItem
-from utils.search_utils import perform_duckduckgo_search
 from scraping.basic_scraper import fetch_and_parse_url
 from scraping.selenium_scraper import scrape_with_selenium
 from scraping.playwright_scraper import scrape_with_playwright
-from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
-
-# Apply nest_asyncio to handle nested event loops
+from utils.filter_utils import filter_search_results_logic
+from utils.filter_utils import DEFAULT_BLOCKED_DOMAINS
 nest_asyncio.apply()
 
 # Define the internal state for the Reputation Agent subgraph
@@ -77,7 +76,7 @@ async def generate_reputation_queries_node(state: ReputationAgentState) -> Reput
 
 async def execute_reputation_search_node(state: ReputationAgentState) -> ReputationAgentState:
     print("[ReputationAgent] Running search with DuckDuckGo...")
-    from utils.search_utils import perform_duckduckgo_search
+    from utils.duckduckgo_search import perform_duckduckgo_search
     
     queries = state.get('generated_queries') or []
     all_results = []

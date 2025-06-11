@@ -6,13 +6,15 @@ from datetime import datetime
 from typing import TypedDict, List, Optional, Dict, Any
 from langgraph.graph import StateGraph, END 
 from agents.common_state import AgentState
-from utils.llm_utils import get_openai_response, get_gemini_response, async_parse_structured_data
+from utils.llm_utils import get_openai_response, get_gemini_response
+from utils.llm_utils import async_parse_structured_data
 from utils.models import SearchResultItem
 from scraping.basic_scraper import fetch_and_parse_url
 from scraping.selenium_scraper import scrape_with_selenium
 from scraping.playwright_scraper import scrape_with_playwright
 from utils.select_context import extract_relevant_context
-from utils.filter_utils import filter_search_results_logic, DEFAULT_BLOCKED_DOMAINS
+from utils.filter_utils import filter_search_results_logic
+from utils.filter_utils import DEFAULT_BLOCKED_DOMAINS
 from pydantic import BaseModel, Field
 nest_asyncio.apply()
 
@@ -77,7 +79,7 @@ async def generate_background_queries_node(state: BackgroundAgentState) -> Backg
 
 async def execute_background_search_node(state: BackgroundAgentState) -> BackgroundAgentState:
     print(">>>[BackgroundAgent] Running background search with DuckDuckGo...")
-    from utils.search_utils import perform_duckduckgo_search
+    from utils.duckduckgo_search import perform_duckduckgo_search
     queries = state.get('generated_queries') or []
     all_results = []
     for query in queries:
