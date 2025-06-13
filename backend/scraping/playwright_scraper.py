@@ -1,16 +1,31 @@
 import asyncio
 import subprocess
+import sys
 from typing import Optional
 from playwright.async_api import async_playwright, TimeoutError as PlaywrightTimeoutError
 
 async def ensure_playwright_install():
     """Ensure Playwright browsers are installed"""
     try:
+        # Try using subprocess
         subprocess.run(['playwright', 'install'], check=True)
         return True
     except Exception as e:
-        print(f"Failed to install Playwright browsers: {e}")
-        return False
+        print(f"Subprocess install failed: {e}")
+        try:
+            # Fallback to direct install
+            from playwright._impl._driver import compute_driver_executable
+            import sys
+            import os
+            driver_executable = compute_driver_executable()
+            if not os.path.exists(driver_executable):
+                print("Installing playwright driver...")
+                import playwright._impl._driver
+                playwright._impl._driver.install_browser()
+            return True
+        except Exception as e2:
+            print(f"Direct install failed: {e2}")
+            return False
 
 async def scrape_with_playwright(url: str, headless: bool = True) -> Optional[str]:
     """
@@ -21,16 +36,28 @@ async def scrape_with_playwright(url: str, headless: bool = True) -> Optional[st
     print(f"[PlaywrightScraper] Attempting to scrape URL: {url}")
     browser = None
 
+    # Create a new event loop for subprocess operations
+    try:
+        # Ensure we're running in the right event loop policy
+        if sys.platform == 'win32':
+            import asyncio
+            try:
+                from asyncio import WindowsSelectorEventLoopPolicy
+                asyncio.set_event_loop_policy(WindowsSelectorEventLoopPolicy())
+            except Exception as e:
+                print(f"[PlaywrightScraper] Warning: Could not set Windows event loop policy: {e}")
+    except Exception as e:
+        print(f"[PlaywrightScraper] Warning: Event loop policy setup failed: {e}")
+
     try:
         async with async_playwright() as p:
-            print("[PlaywrightScraper] Launching browser...")
+            print(">>>[PlaywrightScraper] Launching browser...")
             
             # Try browsers in order
             browser_types = [
                 ("chromium", p.chromium),
                 ("firefox", p.firefox)
             ]
-            
             for browser_name, browser_type in browser_types:
                 try:
                     launch_args = {
@@ -50,11 +77,23 @@ async def scrape_with_playwright(url: str, headless: bool = True) -> Optional[st
             if browser is None:
                 print("[PlaywrightScraper] Attempting to install browsers...")
                 if await ensure_playwright_install():
-                    browser = await p.chromium.launch(
-                        headless=headless,
-                        args=["--no-sandbox", "--disable-blink-features=AutomationControlled"]
-                    )
-                else:
+                    try:
+                        # Try launching with minimal arguments first
+                        browser = await p.chromium.launch(headless=headless)
+                    except Exception as e:
+                        print(f"[PlaywrightScraper] Basic launch failed: {e}, trying with additional arguments...")
+                        # Try with more arguments if basic launch fails
+                        browser = await p.chromium.launch(
+                            headless=headless,
+                            args=[
+                                "--no-sandbox",
+                                "--disable-blink-features=AutomationControlled",
+                                "--disable-dev-shm-usage",
+                                "--disable-gpu",
+                                "--disable-setuid-sandbox"
+                            ]
+                        )
+                if browser is None:
                     raise Exception("Failed to install and launch any browser")
 
             context = await browser.new_context(
@@ -163,6 +202,7 @@ async def scrape_with_playwright(url: str, headless: bool = True) -> Optional[st
 if __name__ == '__main__':
     async def main_test_playwright():
         test_url = "https://www.linkedin.com/in/nepalrabindra/"
+        test_url = " https://www.linkedin.com/in/mehret"
         print(f"Attempting to scrape (Playwright): {test_url}")
         content = await scrape_with_playwright(test_url)
         if content:

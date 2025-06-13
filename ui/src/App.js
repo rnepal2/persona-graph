@@ -4,6 +4,9 @@ import Card from "./components/ui/Card";
 import { useProfileCache } from './hooks/useProfileCache';
 import ResultsDisplay from './components/ResultsDisplay';
 import ProfileForm from './components/ProfileForm';
+import ProfileSidebar from './components/ProfileSidebar';
+import SidebarToggle from './components/SidebarToggle';
+import './styles/custom.css';
 
 const meshBgStyle = {
   backgroundImage: "radial-gradient(circle,rgb(190, 196, 205) 1px, transparent 1px)",
@@ -25,6 +28,7 @@ function App() {
   const [error, setError] = useState(null);
   const [progress, setProgress] = useState([]);
   const [wsState, setWsState] = useState('disconnected');
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const connectionTimeoutRef = useRef(null);
@@ -240,34 +244,54 @@ function App() {
       setLoading(false);
     }
   };
-
   const handleChange = (e) => {
     setForm({ ...form, [e.target.name]: e.target.value });
   };
 
+  const handleProfileSelect = (profile) => {
+    setResult(profile);
+  };
+
+  const handleProfileSaved = () => {
+    // Refresh sidebar if it's open
+    if (sidebarOpen) {
+      // The sidebar will refresh when it detects a save
+    }
+  };
+
   return (
     <div className="min-h-screen text-gray-800" style={meshBgStyle}>
-      <div className="container mx-auto px-4 py-8">
-        <motion.div 
+      {/* Sidebar Toggle */}
+      <SidebarToggle 
+        isOpen={sidebarOpen} 
+        onToggle={() => setSidebarOpen(!sidebarOpen)} 
+      />
+      
+      {/* Sidebar */}
+      <ProfileSidebar 
+        isOpen={sidebarOpen}
+        onToggle={() => setSidebarOpen(!sidebarOpen)}
+        onProfileSelect={handleProfileSelect}
+      />      {/* Main Content with sidebar offset */}
+      <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-80' : 'ml-0'} h-screen overflow-hidden`}>
+        <div className="h-full px-4 py-3">        <motion.div 
           layout
           className={`
-            grid w-full transition-all duration-500 ease-in-out
+            h-full w-full transition-all duration-500 ease-in-out
             ${result 
-              ? 'md:grid-cols-2 md:gap-16' // 4rem gap (16 in Tailwind)
-              : 'grid-cols-1 max-w-3xl mx-auto'
+              ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6' // Responsive: single column on mobile, two columns on large screens
+              : 'flex justify-center items-start pt-8'
             }
           `}
-        >
-          {/* Left column - Form and Progress */}
-          <motion.div
+        >{/* Left column - Form and Progress */}          <motion.div
             layout
-            className="w-full space-y-6"
+            className={`${result ? 'w-full h-full overflow-y-auto' : 'max-w-2xl w-full'} space-y-4`}
             initial={{ opacity: 1 }}
             animate={{ opacity: 1 }}
           >
-            <Card className="p-6 shadow-lg">
-              <h1 className="text-3xl text-red-700 font-bold mb-3">Persona-Graph: Executive Profile Generator</h1>
-              <p className="text-gray-600 font-semibold mb-6">
+            <Card className="shadow-lg">
+              <h1 className="text-3xl text-red-700 font-bold mb-2">Persona-Graph: Executive Profile Generator</h1>
+              <p className="text-gray-600 font-semibold mb-4">
                 Generate an in-depth Executive Profile with Web Search and AI
               </p>
               <ProfileForm
@@ -279,18 +303,16 @@ function App() {
                 searchOptions={searchOptions}
                 onSubmit={handleSubmit}
               />
-            </Card>
-
-            {/* Progress Section */}
+            </Card>            {/* Progress Section */}
             {loading && (
               <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
+                className="space-y-3"
               >
-                <Card className="p-6">
-                  <h2 className="text-xl font-semibold mb-4 flex items-center">
-                    <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <Card variant="compact">
+                  <h2 className="text-lg font-semibold mb-3 flex items-center">
+                    <svg className="animate-spin -ml-1 mr-3 h-4 w-4 text-primary" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
                       <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                       <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                     </svg>
@@ -310,20 +332,16 @@ function App() {
                   </div>
                 </Card>
               </motion.div>
-            )}
-
-            {error && (
+            )}            {error && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="bg-red-50 border-l-4 border-red-400 p-4 rounded"
+                className="bg-red-50 border-l-4 border-red-400 p-3 rounded"
               >
-                <p className="text-red-700">{error}</p>
+                <p className="text-red-700 text-sm">{error}</p>
               </motion.div>
             )}
-          </motion.div>
-
-          {/* Right column - Results */}
+          </motion.div>          {/* Right column - Results */}
           <AnimatePresence mode="wait">
             {result && (
               <motion.div
@@ -332,13 +350,16 @@ function App() {
                 animate={{ opacity: 1, x: 0 }}
                 exit={{ opacity: 0, x: 50 }}
                 transition={{ duration: 0.5, ease: "easeOut" }}
-                className="w-full space-y-6"
+                className="w-full h-full overflow-y-auto space-y-4"
               >
-                <ResultsDisplay result={result} />
+                <ResultsDisplay 
+                  result={result} 
+                  onProfileSaved={handleProfileSaved}
+                />
               </motion.div>
             )}
-          </AnimatePresence>
-        </motion.div>
+          </AnimatePresence>        </motion.div>
+        </div>
       </div>
     </div>
   );

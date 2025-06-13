@@ -8,13 +8,16 @@ import re
 import json
 import pydantic
 import uvicorn
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from multiprocessing import freeze_support
 from concurrent.futures import ThreadPoolExecutor
 from graph import app as graph_app
 from agents.common_state import AgentState
+from utils.database import save_profile, get_all_profiles, get_profile, save_user, get_user_by_email
+from utils.models import ExecutiveProfile, User
+import hashlib
 import nest_asyncio
 nest_asyncio.apply() 
 
@@ -28,6 +31,77 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Temporary user ID for development (in production, this would come from JWT/session)
+TEMP_USER_ID = 1
+
+def get_current_user_id():
+    """Temporary function to get current user ID - replace with actual auth"""
+    # Ensure the user exists in database
+    try:
+        from utils.database import create_user_if_not_exists
+        user_id = create_user_if_not_exists("rnepal", "rnepal@example.com")
+        return user_id
+    except Exception as e:
+        print(f"Error getting user ID: {e}")
+        return TEMP_USER_ID
+
+def extract_profile_data_from_state(final_state: dict, form_data: dict) -> dict:
+    """Extract profile data from the enrichment result"""
+    return {
+        'name': form_data.get('name', ''),
+        'company': form_data.get('company', ''),
+        'title': form_data.get('title', ''),
+        'linkedin_url': form_data.get('linkedin', ''),
+        'executive_profile': final_state.get('aggregated_profile', ''),
+        'professional_background': final_state.get('background_info', ''),
+        'leadership_summary': final_state.get('leadership_info', ''),
+        'reputation_summary': final_state.get('reputation_info', ''),
+        'strategy_summary': final_state.get('strategy_info', ''),
+        'references_data': final_state.get('metadata', [])
+    }
+
+def extract_profile_data_from_result(result: dict) -> dict:
+    """Extract profile data from direct enrichment result (from frontend)"""
+    # Extract basic info from multiple possible locations
+    basic_info = result.get('basic_info', {})
+    
+    # Fallback to root level if basic_info is empty
+    if not basic_info.get('name'):
+        basic_info = {
+            'name': result.get('name', ''),
+            'company': result.get('company', ''),
+            'title': result.get('title', ''),
+            'linkedin_url': result.get('linkedin_url', result.get('linkedin', ''))
+        }
+    
+    # Extract references data properly
+    metadata = result.get('metadata', [])
+    references_data = []
+    
+    # Handle different metadata structures
+    if isinstance(metadata, list):
+        for item in metadata:
+            if isinstance(item, dict):
+                # Check for background_references
+                if 'background_references' in item:
+                    references_data.extend(item['background_references'])
+                # Or if the item itself is a reference
+                elif 'title' in item and 'link' in item:
+                    references_data.append(item)
+    
+    return {
+        'name': basic_info.get('name', ''),
+        'company': basic_info.get('company', ''),
+        'title': basic_info.get('title', ''),
+        'linkedin_url': basic_info.get('linkedin_url', ''),
+        'executive_profile': result.get('aggregated_profile', ''),
+        'professional_background': result.get('background_info', ''),
+        'leadership_summary': result.get('leadership_info', ''),
+        'reputation_summary': result.get('reputation_info', ''),
+        'strategy_summary': result.get('strategy_info', ''),
+        'references_data': references_data
+    }
 
 def make_json_serializable(obj):
     # Handle SearchResultItem objects
@@ -165,6 +239,177 @@ async def enrich_profile(request: Request):
 async def health():
     return {"status": "ok"}
 
+# Profile Management Endpoints
+
+@app.get("/api/profiles")
+async def get_user_profiles():
+    """Get all profiles accessible to the current user"""
+    try:
+        user_id = get_current_user_id()
+        profiles = get_all_profiles(user_id, latest_only=True)
+        return {"success": True, "profiles": profiles}
+    except Exception as e:
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.get("/api/profile/{profile_id}")
+async def get_profile_detail(profile_id: int):
+    """Get detailed profile by ID"""
+    try:
+        user_id = get_current_user_id()
+        profile = get_profile(profile_id, user_id)
+        if profile:
+            return {"success": True, "profile": profile}
+        return JSONResponse(
+            {"success": False, "error": "Profile not found or access denied"},
+            status_code=404
+        )
+    except Exception as e:
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.post("/api/save-profile")
+async def save_profile_endpoint(request: Request):
+    """Save a new profile or create new version"""
+    try:
+        data = await request.json()
+        user_id = get_current_user_id()
+        
+        # Extract profile data
+        profile_data = {
+            'name': data.get('name', ''),
+            'company': data.get('company', ''),
+            'title': data.get('title', ''),
+            'linkedin_url': data.get('linkedin_url', ''),
+            'executive_profile': data.get('executive_profile', ''),
+            'professional_background': data.get('professional_background', ''),
+            'leadership_summary': data.get('leadership_summary', ''),
+            'reputation_summary': data.get('reputation_summary', ''),
+            'strategy_summary': data.get('strategy_summary', ''),
+            'references_data': data.get('references_data', {})
+        }
+        
+        profile_id = save_profile(profile_data, user_id)
+        return {"success": True, "profile_id": profile_id, "message": "Profile saved successfully"}
+    except Exception as e:
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.post("/api/save-enriched-profile")
+async def save_enriched_profile(request: Request):
+    """Save profile from enrichment result"""
+    try:
+        data = await request.json()
+        user_id = get_current_user_id()
+        
+        print(f"Received save request with keys: {list(data.keys())}")
+        
+        # Log some sample data for debugging
+        if 'basic_info' in data:
+            print(f"Basic info: {data['basic_info']}")
+        if 'aggregated_profile' in data:
+            print(f"Aggregated profile length: {len(data.get('aggregated_profile', ''))}")
+        if 'metadata' in data:
+            print(f"Metadata type: {type(data['metadata'])}, length: {len(data.get('metadata', []))}")
+            if data['metadata'] and len(data['metadata']) > 0:
+                print(f"First metadata item: {data['metadata'][0]}")
+        
+        # Handle two possible data formats:
+        # 1. Direct enrichment result (from ResultsDisplay)
+        # 2. Wrapped format with form_data and final_state
+        
+        if 'form_data' in data and 'final_state' in data:
+            # Wrapped format
+            form_data = data.get('form_data', {})
+            final_state = data.get('final_state', {})
+            profile_data = extract_profile_data_from_state(final_state, form_data)
+            print(f"Using wrapped format extraction")
+        else:
+            # Direct result format from frontend
+            profile_data = extract_profile_data_from_result(data)
+            print(f"Using direct format extraction")
+        
+        print(f"Extracted profile data keys: {list(profile_data.keys())}")
+        print(f"Name: '{profile_data.get('name')}'")
+        print(f"Company: '{profile_data.get('company')}'")
+        print(f"References count: {len(profile_data.get('references_data', []))}")
+        
+        profile_id = save_profile(profile_data, user_id)
+        return {"success": True, "profile_id": profile_id, "message": "Enriched profile saved successfully"}
+    except Exception as e:
+        print(f"Error saving enriched profile: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.get("/api/profile/{profile_id}/versions")
+async def get_profile_versions(profile_id: int):
+    """Get all versions of a specific profile"""
+    try:
+        user_id = get_current_user_id()
+        # First check if user has access to this profile
+        profile = get_profile(profile_id, user_id)
+        if not profile:
+            return JSONResponse(
+                {"success": False, "error": "Profile not found or access denied"},
+                status_code=404
+            )
+        
+        # Get all versions for this profile (by name and linkedin_url)
+        all_profiles = get_all_profiles(user_id, latest_only=False)
+          # Filter to get versions of the same executive
+        versions = [
+            p for p in all_profiles 
+            if p['name'] == profile['name'] and p['linkedin_url'] == profile['linkedin_url']
+        ]
+        
+        return {"success": True, "versions": versions}
+    except Exception as e:
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.delete("/api/profile/{profile_id}")
+async def delete_profile(profile_id: int):
+    """Delete a profile by ID"""
+    try:
+        user_id = get_current_user_id()
+        
+        # First check if user has access to this profile
+        profile = get_profile(profile_id, user_id)
+        if not profile:
+            return JSONResponse(
+                {"success": False, "error": "Profile not found or access denied"},
+                status_code=404
+            )
+        
+        # Delete the profile
+        from utils.database import delete_profile as db_delete_profile
+        success = db_delete_profile(profile_id, user_id)
+        
+        if success:
+            return {"success": True, "message": "Profile deleted successfully"}
+        else:
+            return JSONResponse(
+                {"success": False, "error": "Failed to delete profile"},
+                status_code=500
+            )
+    except Exception as e:
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
 # --- WebSocket connection manager ---
 class ConnectionManager:
     def __init__(self):
@@ -205,8 +450,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "background_info": None,
                     "aggregated_profile": None,
                     "error_message": None,
-                    "next_agent_to_call": None,
-                    "metadata": [{"source": "ws", "data": form}],
+                    "next_agent_to_call": None,                    "metadata": [{"source": "ws", "data": form}],
                     "history": None
                 }
                 try:

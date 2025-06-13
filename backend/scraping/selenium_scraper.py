@@ -81,6 +81,7 @@ async def scrape_with_selenium(url: str, headless: bool = True) -> Optional[str]
 if __name__ == '__main__':
     async def main_test_selenium():
         test_url = "https://en.wikipedia.org/wiki/Information_retrieval"
+        test_url = "https://www.linkedin.com/in/mehret"
         print(f"Attempting to scrape (Selenium): {test_url}")
         content = await scrape_with_selenium(test_url)
         if content:

@@ -66,10 +66,14 @@ async def generate_background_queries_node(state: BackgroundAgentState) -> Backg
     if raw_llm_response:
         queries = await async_parse_structured_data(raw_llm_response, schema=QueriesList)
         generated_queries = queries.queries if queries and queries.queries else []
-        print(f"[BackgroundAgent] LLM generated queries: {generated_queries}")
+        print(f">>>[BackgroundAgent] LLM generated queries:")
+        for i, query in enumerate(generated_queries):
+            print(f"    [{i + 1}] {query}")
     else:
         print("[BackgroundAgent] LLM call failed or returned no response. Using default placeholder queries.")
-        generated_queries = ["default background query 1", "default background query 2"] # Fallback
+        generated_queries = [f"who is {state.get('name', 'Executive Name')}?", 
+                             f"professional background of {state.get('name', 'Executive Name')}",
+                            ]
     state['generated_queries'] = generated_queries
     return state
 

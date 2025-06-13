@@ -4,6 +4,8 @@ from typing import Optional, Type, List
 from pydantic import BaseModel, Field
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
+from dotenv import load_dotenv
+load_dotenv()
 try:
     from utils.config import config, LLMProvider
 except:
@@ -60,24 +62,35 @@ async def get_gemini_response(prompt: str, model_name: str = "gemini-1.5-flash")
             for feedback in response.prompt_feedbacks:
                 if feedback.block_reason:
                     return f"Content generation blocked: {feedback.block_reason}"
-        return None
+        return None    
     except Exception as e:
         print(f"Gemini error: {e}")
         return None
-
-llm_gemini = ChatGoogleGenerativeAI(
-    model=config.llm.gemini_model,
-    temperature=0,
-    max_tokens=None,
-    timeout=None,
-    max_retries=2,
-)
+    
+def get_llm_gemini():
+    """Lazy initialization of Gemini LLM to avoid import-time errors"""
+    try:
+        return ChatGoogleGenerativeAI(
+            model=config.llm.gemini_model,
+            google_api_key=config.gemini_api_key,
+            temperature=0,
+            max_tokens=None,
+            timeout=None,
+            max_retries=2,
+        )
+    except Exception as e:
+        print(f"Error initializing Gemini LLM: {e}")
+        return None
 
 async def async_parse_structured_data(
     text: str,
     schema: Type[BaseModel],
-    llm=llm_gemini
+    llm=None
 ) -> BaseModel:
+    if llm is None:
+        llm = get_llm_gemini()
+        if llm is None:
+            raise Exception("Failed to initialize LLM for structured data parsing")
     prompt = ChatPromptTemplate.from_messages([
         (
             "system",

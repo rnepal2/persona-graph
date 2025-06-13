@@ -1,23 +1,52 @@
-import React from 'react';
+import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { motion } from 'framer-motion';
 import Card from './ui/Card';
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from './ui/Accordion';
 import CopyButton from './ui/CopyButton';
 
-const ResultsDisplay = ({ result }) => {
+const ResultsDisplay = ({ result, onProfileSaved }) => {
+  const [saving, setSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  
   if (!result) return null;
-
-  return (
-    <motion.div
-      className="space-y-5"
+  const handleSaveProfile = async () => {
+    setSaving(true);
+    setSaveSuccess(false);
+    
+    try {
+      const response = await fetch('http://localhost:5000/api/save-enriched-profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(result),
+      });
+      
+      if (response.ok) {
+        setSaveSuccess(true);
+        setTimeout(() => setSaveSuccess(false), 3000);
+        if (onProfileSaved) {
+          onProfileSaved();
+        }
+      } else {
+        throw new Error('Failed to save profile');
+      }
+    } catch (error) {
+      console.error('Error saving profile:', error);
+      // Could add error state here
+    } finally {
+      setSaving(false);
+    }
+  };
+  return (    <motion.div
+      className="h-full flex flex-col space-y-4 overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-    >
-      {/* Executive Profile Summary */}
-      <Card className="shadow border border-slate-200 p-5 h-full">
-        <div className="flex justify-between items-start mb-4">
+    >      {/* Executive Profile Summary */}
+      <Card variant="compact" className="shadow border border-slate-200 flex-1 flex flex-col min-h-0 overflow-hidden">
+        <div className="flex justify-between items-start mb-3 flex-shrink-0">
           <h3 className="text-xl font-semibold text-gray-800 flex items-center">
             <span className="bg-primary/10 p-2 rounded-full mr-2">
               <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
@@ -26,13 +55,53 @@ const ResultsDisplay = ({ result }) => {
             </span>
             Executive Profile Summary
           </h3>
-          {result.aggregated_profile && (
-            <CopyButton text={result.aggregated_profile} />
-          )}
-        </div>
-        <div className="prose prose-sm max-w-none">
+          <div className="flex items-center gap-2">
+            {result.aggregated_profile && (
+              <CopyButton text={result.aggregated_profile} />
+            )}
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              onClick={handleSaveProfile}
+              disabled={saving}
+              className={`
+                px-4 py-2 rounded-lg text-sm font-medium transition-all
+                ${saving 
+                  ? 'bg-gray-200 text-gray-500 cursor-not-allowed' 
+                  : saveSuccess
+                    ? 'bg-green-100 text-green-700 border border-green-200'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }
+              `}
+            >
+              {saving ? (
+                <div className="flex items-center">
+                  <svg className="animate-spin -ml-1 mr-2 h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                  </svg>
+                  Saving...
+                </div>
+              ) : saveSuccess ? (
+                <div className="flex items-center">
+                  <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  Saved!
+                </div>
+              ) : (
+                <div className="flex items-center">
+                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
+                  </svg>
+                  Save Profile
+                </div>
+              )}
+            </motion.button>
+          </div>
+        </div>        <div className="prose prose-sm max-w-none flex-1 min-h-0">
           {result.aggregated_profile ? (
-            <div className="bg-white rounded-lg max-h-[calc(100vh-300px)] overflow-y-auto custom-scrollbar">
+            <div className="bg-white rounded-lg h-full overflow-y-auto custom-scrollbar">
               <div className="p-6 prose prose-slate prose-headings:mb-3 prose-p:mb-2 prose-ul:mb-2">
                 <ReactMarkdown
                   components={{
@@ -78,10 +147,9 @@ const ResultsDisplay = ({ result }) => {
             <p className="text-gray-500">No profile summary available.</p>
           )}
         </div>
-      </Card>
-      
-      {/* Wrap Detailed Insights and References in a main Accordion */}
-      <Accordion>
+      </Card>        {/* Wrap Detailed Insights and References in a main Accordion */}
+      <div className="flex-shrink-0 overflow-y-auto max-h-96">
+        <Accordion>
         {/* Detailed Insights Section */}
         <AccordionItem value="insights">
           <AccordionTrigger>
@@ -208,9 +276,9 @@ const ResultsDisplay = ({ result }) => {
                 </Accordion>
               </div>
             </AccordionContent>
-          </AccordionItem>
-        )}
+          </AccordionItem>        )}
       </Accordion>
+      </div>
     </motion.div>
   );
 };
