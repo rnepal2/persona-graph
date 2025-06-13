@@ -16,6 +16,7 @@ DEFAULT_BLOCKED_DOMAINS = [
 ]
 
 async def filter_search_results_logic(
+    name: str,
     results: List[SearchResultItem],
     profile_summary: str,
     agent_query_focus: str,
@@ -50,34 +51,33 @@ async def filter_search_results_logic(
         determine if a given web search result is relevant to a specific individual of interest."""
         
         user_prompt = f"""
-            Original Search Intent/Agent Focus: "{agent_query_focus}"
-            Overall Profile Summary of Individual: "{profile_summary}"
+            Original Search Focus: "{agent_query_focus}"
+            Profile Summary of Individual of Interest: "{profile_summary}"
 
             Search Result Details:
+            Name: "{name}"
             Title: "{item.title}"
             Link: "{str(item.link)}"
             Snippet: "{item.snippet or 'N/A'}"
 
-            Reminder: This search result should be assessed for this specific individual based on the profile not 
-            just the name, as there might be many people with the same name.
+            Reminder: The search result should be analyzed to decide if is related to this specific individual.
+            Just name is not enough, as there may be many people with the same name in the web.
 
-            Based on the search intent and the profile summary, is this search result relevant for 
-            further investigation? Respond with only YES or NO.
+            Is the given article related to {name}, the same one of our interest? Respond with just 'YES' or 'NO'.
         """
         print(f"[RankSearchItem] Evaluating relevance for: {item.title} (Link: {item.link})")
         prompt = f"{system_prompt} \n\n {user_prompt}"
         llm_response = await get_gemini_response(prompt=prompt)
         
         is_relevant = False
-        if llm_response and llm_response.strip().upper() == "YES":
-            print(f"[RankSearchItem] RELEVANT by LLM: {item.title}")
+        if llm_response and 'YES' in llm_response.strip().upper():
+            print(f">>>[RankSearchItem] RELEVANT by LLM: {item.title}")
             is_relevant = True
         else:
             if llm_response is None:
                 print(f">>>[RankSearchItem] NOT RELEVANT (LLM call failed or no response), Title: {item.title}")
             else:
                 print(f">>>[RankSearchItem] NOT RELEVANT, Title: {item.title}")
-        
         return item, is_relevant
 
     # Step 3: Execute LLM relevance checks in parallel

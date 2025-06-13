@@ -246,7 +246,8 @@ async def get_user_profiles():
     """Get all profiles accessible to the current user"""
     try:
         user_id = get_current_user_id()
-        profiles = get_all_profiles(user_id, latest_only=True)
+        # Get ALL profiles (not just latest) so frontend can group versions
+        profiles = get_all_profiles(user_id, latest_only=False)
         return {"success": True, "profiles": profiles}
     except Exception as e:
         return JSONResponse(
@@ -293,6 +294,7 @@ async def save_profile_endpoint(request: Request):
             'references_data': data.get('references_data', {})
         }
         
+        # The save_profile function automatically handles versioning
         profile_id = save_profile(profile_data, user_id)
         return {"success": True, "profile_id": profile_id, "message": "Profile saved successfully"}
     except Exception as e:
@@ -340,6 +342,7 @@ async def save_enriched_profile(request: Request):
         print(f"Company: '{profile_data.get('company')}'")
         print(f"References count: {len(profile_data.get('references_data', []))}")
         
+        # The save_profile function automatically handles versioning based on name + linkedin_url
         profile_id = save_profile(profile_data, user_id)
         return {"success": True, "profile_id": profile_id, "message": "Enriched profile saved successfully"}
     except Exception as e:

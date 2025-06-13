@@ -95,6 +95,10 @@ async def execute_strategy_search_node(state: StrategyAgentState) -> StrategyAge
 async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAgentState:
     agent_name = "StrategyAgent"
     print(f"[{agent_name}] Scraping strategy results...")
+
+    # CONFIGURABLE SCRAPER ORDER
+    SCRAPER_ORDER = ["basic_scraper", "selenium_scraper", "playwright_scraper"]
+    
     current_search_results = state.get('search_results') or []
     if not current_search_results:
         print(f"[{agent_name}] No search results to scrape.")
@@ -102,6 +106,13 @@ async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAge
 
     processed_search_results: List[SearchResultItem] = []
     MIN_CONTENT_LENGTH = 100
+
+    # Define scraper functions mapping
+    scraper_functions = {
+        "basic_scraper": lambda url: fetch_and_parse_url(str(url)),
+        "selenium_scraper": lambda url: scrape_with_selenium(str(url)),
+        "playwright_scraper": lambda url: scrape_with_playwright(str(url))
+    }
 
     for item in current_search_results:
         if getattr(item, 'content', None) and len(item.content) >= MIN_CONTENT_LENGTH:
@@ -113,42 +124,25 @@ async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAge
         scraped_text: Optional[str] = None
         scraper_used: Optional[str] = None
 
-        # 1. Try Basic Scraper
-        try:
-            print(f"[{agent_name}] Trying basic_scraper for {item.link}...")
-            scraped_text = await fetch_and_parse_url(str(item.link))
-            if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
-                scraper_used = "basic_scraper"
-            else:
-                scraped_text = None
-        except Exception as e:
-            print(f"[{agent_name}] Basic_scraper failed for {item.link}: {e}")
-            scraped_text = None
-
-        # 2. Try Playwright Scraper if basic failed
-        if not scraper_used:
+        # Try scrapers in the configured order
+        for scraper_name in SCRAPER_ORDER:
+            if scraper_used:  # If we already succeeded, break out
+                break
+                
             try:
-                print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
-                scraped_text = await scrape_with_playwright(str(item.link))
+                print(f"[{agent_name}] Trying {scraper_name} for {item.link}...")
+                scraper_function = scraper_functions[scraper_name]
+                scraped_text = await scraper_function(item.link)
+                
                 if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
-                    scraper_used = "playwright_scraper"
+                    scraper_used = scraper_name
+                    print(f"[{agent_name}] ✓ {scraper_name.upper()} succeeded for {item.link}")
                 else:
                     scraped_text = None
+                    print(f"[{agent_name}] ✗ {scraper_name} returned insufficient content for {item.link}")
+                    
             except Exception as e:
-                print(f"[{agent_name}] Playwright_scraper failed for {item.link}: {e}")
-                scraped_text = None
-
-        # 3. Try Selenium Scraper if Playwright failed
-        if not scraper_used:
-            try:
-                print(f"[{agent_name}] Trying selenium_scraper for {item.link}...")
-                scraped_text = await scrape_with_selenium(str(item.link))
-                if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
-                    scraper_used = "selenium_scraper"
-                else:
-                    scraped_text = None
-            except Exception as e:
-                print(f"[{agent_name}] Selenium_scraper failed for {item.link}: {e}")
+                print(f"[{agent_name}] ✗ {scraper_name} failed for {item.link}: {e}")
                 scraped_text = None
 
         if scraper_used:
@@ -211,6 +205,7 @@ async def compile_strategy_report_node(state: StrategyAgentState) -> StrategyAge
 
 async def filter_search_results_node(state: StrategyAgentState) -> StrategyAgentState:
     agent_name = "StrategyAgent"
+    name = state.get('name', 'Executive Name')
     print(f"[{agent_name}] Filtering search results...")
     current_results = state.get('search_results') or []
     if not current_results:
@@ -221,6 +216,7 @@ async def filter_search_results_node(state: StrategyAgentState) -> StrategyAgent
     agent_specific_focus_description = "Strategic contributions, business impact, M&A activity, product leadership, measurable business results, and boardroom influence."
 
     filtered_results = await filter_search_results_logic(
+        name=name,
         results=current_results,
         profile_summary=profile_summary,
         agent_query_focus=agent_specific_focus_description,
@@ -237,13 +233,13 @@ strategy_graph.add_node("generate_strategy_queries", generate_strategy_queries_n
 strategy_graph.add_node("execute_search", execute_strategy_search_node)
 strategy_graph.add_node("filter_search_results", filter_search_results_node)
 strategy_graph.add_node("scrape_results", scrape_strategy_results_node)
-strategy_graph.add_node("compile_report", compile_strategy_report_node)  # Now async
+strategy_graph.add_node("compile_report", compile_strategy_report_node)
 
 strategy_graph.set_entry_point("generate_strategy_queries")
 strategy_graph.add_edge("generate_strategy_queries", "execute_search")
-strategy_graph.add_edge("execute_search", "filter_search_results")
-strategy_graph.add_edge("filter_search_results", "scrape_results")
-strategy_graph.add_edge("scrape_results", "compile_report")
+strategy_graph.add_edge("execute_search", "scrape_results")
+strategy_graph.add_edge("scrape_results", "filter_search_results")
+strategy_graph.add_edge("filter_search_results", "compile_report")
 strategy_graph.add_edge("compile_report", END)
 
 strategy_subgraph_app = strategy_graph.compile()
@@ -296,5 +292,7 @@ async def strategy_agent_node(state: AgentState): # Changed to async def
         print(f"[StrategyAgent] Error: {error_msg}")
         state['error_message'] = error_msg
         
+    print("[StrategyAgent] Finished processing.")
+    return state
     print("[StrategyAgent] Finished processing.")
     return state

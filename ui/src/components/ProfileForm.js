@@ -1,4 +1,5 @@
 import React from 'react';
+import { motion } from 'framer-motion';
 import Button from './ui/Button';
 import Card from './ui/Card';
 import { FaSearch } from 'react-icons/fa';
@@ -16,102 +17,112 @@ const ProfileForm = ({
     setForm(prev => ({ ...prev, [e.target.name]: e.target.value }));
   };
 
-  return (    <form onSubmit={onSubmit}>
+  return (
+    <motion.form 
+      layout
+      transition={{ duration: 0.6, ease: [0.1, 0.0, 0.1, 0.2] }}
+      onSubmit={onSubmit} 
+      className="ml-0"
+    >
       {/* Input Section */}
       <span className='mb-3 text-sm font-semibold'>Basic Information</span>
-      <Card variant="compact" className="shadow border border-slate-200 mb-4">
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">            <div>
-              <label className="block text-sm font-medium mb-1">Name</label>
-              <input 
-                name="name" 
-                value={form.name} 
+      <motion.div layout transition={{ duration: 0.8, ease: [0.4, 0.0, 0.2, 1] }}>
+        <Card variant="compact" className="shadow border border-slate-200 mb-4">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">            <div>
+                <label className="block text-sm font-medium mb-1">Name</label>
+                <input 
+                  name="name" 
+                  value={form.name} 
+                  onChange={handleChange} 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                  required 
+                />
+              </div>            <div>
+                <label className="block text-sm font-medium mb-1">Title</label>
+                <input 
+                  name="title" 
+                  value={form.title} 
+                  onChange={handleChange} 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                />
+              </div>            <div>
+                <label className="block text-sm font-medium mb-1">Company</label>
+                <input 
+                  name="company" 
+                  value={form.company} 
+                  onChange={handleChange} 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                />
+              </div>            <div>
+                <label className="block text-sm font-medium mb-1">LinkedIn Profile Link</label>
+                <input 
+                  name="linkedin" 
+                  value={form.linkedin} 
+                  onChange={handleChange} 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                  placeholder="https://linkedin.com/in/..." 
+                />
+              </div>
+            </div>          <div>
+              <label className="block text-sm font-medium mb-1">Known Information</label>
+              <textarea 
+                name="summary" 
+                value={form.summary} 
                 onChange={handleChange} 
                 className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
+                rows={4} 
+                placeholder="Enter basic available information..." 
                 required 
               />
-            </div>            <div>
-              <label className="block text-sm font-medium mb-1">Title</label>
-              <input 
-                name="title" 
-                value={form.title} 
-                onChange={handleChange} 
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
-              />
-            </div>            <div>
-              <label className="block text-sm font-medium mb-1">Company</label>
-              <input 
-                name="company" 
-                value={form.company} 
-                onChange={handleChange} 
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
-              />
-            </div>            <div>
-              <label className="block text-sm font-medium mb-1">LinkedIn Profile Link</label>
-              <input 
-                name="linkedin" 
-                value={form.linkedin} 
-                onChange={handleChange} 
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
-                placeholder="https://linkedin.com/in/..." 
-              />
             </div>
-          </div>          <div>
-            <label className="block text-sm font-medium mb-1">Known Information</label>
-            <textarea 
-              name="summary" 
-              value={form.summary} 
-              onChange={handleChange} 
-              className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200" 
-              rows={4} 
-              placeholder="Enter basic available information..." 
-              required 
-            />
           </div>
-        </div>
-      </Card>      {/* Settings & Search Button Section */}
+        </Card>
+      </motion.div>      {/* Settings & Search Button Section */}
       <span className='mb-3 text-sm font-semibold'>Settings</span>
-      <Card variant="compact" className="shadow border border-slate-200">
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">            <div>
-              <label className="block text-sm font-medium mb-1">AI Model</label>
-              <select 
-                name="llm" 
-                value={form.llm} 
-                onChange={handleChange} 
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+      <motion.div layout transition={{ duration: 0.8, ease: [0.4, 0.0, 0.2, 1] }}>
+        <Card variant="compact" className="shadow border border-slate-200">
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">            <div>
+                <label className="block text-sm font-medium mb-1">AI Model</label>
+                <select 
+                  name="llm" 
+                  value={form.llm} 
+                  onChange={handleChange} 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                >
+                  {llmOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>            <div>
+                <label className="block text-sm font-medium mb-1">Search Engine</label>
+                <select 
+                  name="searchEngine" 
+                  value={form.searchEngine} 
+                  onChange={handleChange} 
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
+                >
+                  {searchOptions.map(opt => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-center">
+              <Button 
+                type="submit" 
+                disabled={loading} 
+                className="w-full md:w-auto flex items-center justify-center gap-2 px-8 py-2 text-base"
               >
-                {llmOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
-            </div>            <div>
-              <label className="block text-sm font-medium mb-1">Search Engine</label>
-              <select 
-                name="searchEngine" 
-                value={form.searchEngine} 
-                onChange={handleChange} 
-                className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200"
-              >
-                {searchOptions.map(opt => (
-                  <option key={opt.value} value={opt.value}>{opt.label}</option>
-                ))}
-              </select>
+                <FaSearch className="inline-block mr-2" />
+                {loading ? "Running..." : "Search Profile"}
+              </Button>
             </div>
           </div>
-          <div className="flex justify-center">
-            <Button 
-              type="submit" 
-              disabled={loading} 
-              className="w-full md:w-auto flex items-center justify-center gap-2 px-8 py-2 text-base"
-            >
-              <FaSearch className="inline-block mr-2" />
-              {loading ? "Running..." : "Search Profile"}
-            </Button>
-          </div>
-        </div>
-      </Card>
-    </form>
+        </Card>
+      </motion.div>
+    </motion.form>
   );
 };
 

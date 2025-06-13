@@ -93,6 +93,10 @@ async def execute_reputation_search_node(state: ReputationAgentState) -> Reputat
 async def scrape_reputation_results_node(state: ReputationAgentState) -> ReputationAgentState:
     agent_name = "ReputationAgent"
     print(f"[{agent_name}] Scraping reputation results...")
+
+    # CONFIGURABLE SCRAPER ORDER
+    SCRAPER_ORDER = ["basic_scraper", "selenium_scraper", "playwright_scraper"]
+    
     current_search_results = state.get('search_results') or []
     if not current_search_results:
         print(f"[{agent_name}] No search results to scrape.")
@@ -100,6 +104,13 @@ async def scrape_reputation_results_node(state: ReputationAgentState) -> Reputat
 
     processed_search_results: List[SearchResultItem] = []
     MIN_CONTENT_LENGTH = 100
+
+    # Define scraper functions mapping
+    scraper_functions = {
+        "basic_scraper": lambda url: fetch_and_parse_url(str(url)),
+        "selenium_scraper": lambda url: scrape_with_selenium(str(url)),
+        "playwright_scraper": lambda url: scrape_with_playwright(str(url))
+    }
 
     for item in current_search_results:
         if getattr(item, 'content', None) and len(item.content) >= MIN_CONTENT_LENGTH:
@@ -111,42 +122,25 @@ async def scrape_reputation_results_node(state: ReputationAgentState) -> Reputat
         scraped_text: Optional[str] = None
         scraper_used: Optional[str] = None
 
-        # 1. Try Basic Scraper
-        try:
-            print(f"[{agent_name}] Trying basic_scraper for {item.link}...")
-            scraped_text = await fetch_and_parse_url(str(item.link))
-            if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
-                scraper_used = "basic_scraper"
-            else:
-                scraped_text = None
-        except Exception as e:
-            print(f"[{agent_name}] Basic_scraper failed for {item.link}: {e}")
-            scraped_text = None
-
-        # 2. Try Playwright Scraper if basic failed
-        if not scraper_used:
+        # Try scrapers in the configured order
+        for scraper_name in SCRAPER_ORDER:
+            if scraper_used:  # If we already succeeded, break out
+                break
+                
             try:
-                print(f"[{agent_name}] Trying playwright_scraper for {item.link}...")
-                scraped_text = await scrape_with_playwright(str(item.link))
+                print(f"[{agent_name}] Trying {scraper_name} for {item.link}...")
+                scraper_function = scraper_functions[scraper_name]
+                scraped_text = await scraper_function(item.link)
+                
                 if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
-                    scraper_used = "playwright_scraper"
+                    scraper_used = scraper_name
+                    print(f"[{agent_name}] ✓ {scraper_name.upper()} succeeded for {item.link}")
                 else:
                     scraped_text = None
+                    print(f"[{agent_name}] ✗ {scraper_name} returned insufficient content for {item.link}")
+                    
             except Exception as e:
-                print(f"[{agent_name}] Playwright_scraper failed for {item.link}: {e}")
-                scraped_text = None
-
-        # 3. Try Selenium Scraper if Playwright failed
-        if not scraper_used:
-            try:
-                print(f"[{agent_name}] Trying selenium_scraper for {item.link}...")
-                scraped_text = await scrape_with_selenium(str(item.link))
-                if scraped_text and len(scraped_text) >= MIN_CONTENT_LENGTH:
-                    scraper_used = "selenium_scraper"
-                else:
-                    scraped_text = None
-            except Exception as e:
-                print(f"[{agent_name}] Selenium_scraper failed for {item.link}: {e}")
+                print(f"[{agent_name}] ✗ {scraper_name} failed for {item.link}: {e}")
                 scraped_text = None
 
         if scraper_used:
@@ -169,6 +163,7 @@ async def scrape_reputation_results_node(state: ReputationAgentState) -> Reputat
 
 async def filter_search_results_node(state: ReputationAgentState) -> ReputationAgentState:
     agent_name = "ReputationAgent"
+    name = state.get('name', 'Executive Name')
     print(f"[{agent_name}] Filtering search results...")
     current_results = state.get('search_results') or []
     if not current_results:
@@ -179,6 +174,7 @@ async def filter_search_results_node(state: ReputationAgentState) -> ReputationA
     agent_specific_focus_description = "Public sentiment, media perception, awards, controversies, and overall reputation of the executive."
 
     filtered_results = await filter_search_results_logic(
+        name=name,
         results=current_results,
         profile_summary=profile_summary,
         agent_query_focus=agent_specific_focus_description,
@@ -239,9 +235,9 @@ reputation_graph.add_node("compile_report", compile_reputation_report_node)
 
 reputation_graph.set_entry_point("generate_reputation_queries")
 reputation_graph.add_edge("generate_reputation_queries", "execute_search")
-reputation_graph.add_edge("execute_search", "filter_search_results")
-reputation_graph.add_edge("filter_search_results", "scrape_results")
-reputation_graph.add_edge("scrape_results", "compile_report")
+reputation_graph.add_edge("execute_search", "scrape_results")
+reputation_graph.add_edge("scrape_results", "filter_search_results")
+reputation_graph.add_edge("filter_search_results", "compile_report")
 reputation_graph.add_edge("compile_report", END)
 
 reputation_subgraph_app = reputation_graph.compile()
@@ -295,5 +291,7 @@ async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to a
         print(f"[ReputationAgent] Error: {error_msg}")
         state['error_message'] = error_msg
         
+    print("[ReputationAgent] Finished processing.")
+    return state
     print("[ReputationAgent] Finished processing.")
     return state

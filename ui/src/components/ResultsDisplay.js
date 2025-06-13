@@ -39,7 +39,8 @@ const ResultsDisplay = ({ result, onProfileSaved }) => {
       setSaving(false);
     }
   };
-  return (    <motion.div
+  return (    
+    <motion.div
       className="h-full flex flex-col space-y-4 overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
