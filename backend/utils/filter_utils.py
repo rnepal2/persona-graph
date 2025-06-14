@@ -47,37 +47,50 @@ async def filter_search_results_logic(
 
     # Step 2: Prepare LLM tasks for parallel execution
     async def check_relevance(item: SearchResultItem) -> tuple[SearchResultItem, bool]:
-        system_prompt = """You are a meticulous relevance assessment assistant. Your task is to
-        determine if a given web search result is relevant to a specific individual of interest."""
+        system_prompt = """You are a meticulous researcher and fact-checker specializing in identity disambiguation."""
         
-        user_prompt = f"""
-            Original Search Focus: "{agent_query_focus}"
-            Profile Summary of Individual of Interest: "{profile_summary}"
+        user_prompt = """
+            [TASK]
+            Your task is to determine with high confidence if the provided article is about our specific 
+            'Person of Interest' or simply someone else with the same name. You must avoid false positives.
 
-            Search Result Details:
-            Name: "{name}"
-            Title: "{item.title}"
-            Link: "{str(item.link)}"
-            Snippet: "{item.snippet or 'N/A'}"
+            [PERSON OF INTEREST DETAILS]
+            - Name: "{name}"
+            - Profile: "{profile_summary}"
+            - Context of Search: "{agent_query_focus}"
 
-            Reminder: The search result should be analyzed to decide if is related to this specific individual.
-            Just name is not enough, as there may be many people with the same name in the web.
+            [ARTICLE DETAILS]
+            - Title: {item.title}
+            - Snippet: {item.snippet}
+            - Link: {item.link}
 
-            Is the given article related to {name}, the same one of our interest? Respond with just 'YES' or 'NO'.
+            [INSTRUCTIONS]
+            Follow this step-by-step process:
+            1.  **Analyze Profile:** Read the 'Person of Interest Details' to understand their key identifiers (e.g., company, role, location, field of expertise).
+            2.  **Analyze Article:** Extract key identifying details from the 'ARTICLE DETAILS'.
+            3.  **Compare and Contrast:**
+                - Look for details that match with the profile.
+                - Any details that CONFLICT or are INCONSISTENT, for example same name but different educational and professional background.
+                - Note if the article is too generic to make a confident decision.
+            4.  **Decision Criteria:** Make objective decision based on the analysis about article relevance.
+
+            [DECISION & OUTPUT FORMAT]
+            "YES" or "NO"
         """
+
         print(f"[RankSearchItem] Evaluating relevance for: {item.title} (Link: {item.link})")
         prompt = f"{system_prompt} \n\n {user_prompt}"
-        llm_response = await get_gemini_response(prompt=prompt)
+        llm_response = await get_gemini_response(prompt=prompt, model_name="gemini-2.0-flash")
         
         is_relevant = False
         if llm_response and 'YES' in llm_response.strip().upper():
-            print(f">>>[RankSearchItem] RELEVANT by LLM: {item.title}")
+            print(f">>>[RankSearchItem] ✓ RELEVANT by LLM: {item.title}")
             is_relevant = True
         else:
             if llm_response is None:
-                print(f">>>[RankSearchItem] NOT RELEVANT (LLM call failed or no response), Title: {item.title}")
+                print(f">>>[RankSearchItem] ✗ NOT RELEVANT (LLM call failed or no response), Title: {item.title}")
             else:
-                print(f">>>[RankSearchItem] NOT RELEVANT, Title: {item.title}")
+                print(f">>>[RankSearchItem] ✗ NOT RELEVANT, Title: {item.title}")
         return item, is_relevant
 
     # Step 3: Execute LLM relevance checks in parallel

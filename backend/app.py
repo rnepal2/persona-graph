@@ -458,63 +458,241 @@ async def websocket_endpoint(websocket: WebSocket):
                     "metadata": [{"source": "ws", "data": form}],
                     "history": None
                 }
+                
+                # Track final state and execution status
+                final_state = None
+                stream_generator = None
+                successful_agents = []
+                failed_agents = []
+                graph_completed = False
+                
                 try:
                     await websocket.send_text(json.dumps({"type": "progress", "data": "Starting enrichment..."}))
                     
-                    # Track final state from streaming
-                    final_state = None
+                    # Create the stream generator
+                    stream_generator = graph_app.astream(initial_input)
                     
-                    # Stream the graph execution
-                    async for event in graph_app.astream(initial_input):
-                        # Send node start notifications
+                    # Stream the graph execution with enhanced error handling
+                    async for event in stream_generator:
+                        # Check if WebSocket is still connected before sending
+                        if websocket.client_state.value != 1:  # 1 = CONNECTED
+                            print("WebSocket disconnected during streaming, breaking loop")
+                            break
+                            
+                        # Check if this is the END event or empty event
+                        if not event or len(event) == 0:
+                            print("Received END event or empty event - graph execution completed")
+                            graph_completed = True
+                            break
+                            
+                        # Process each node in the event
                         for node_name, node_data in event.items():
-                            await websocket.send_text(json.dumps({
-                                "type": "node_start", 
-                                "data": {"node": node_name}
-                            }))
-                            
-                            # Send partial results as they become available
-                            partial_result = {}
-                            if node_data.get('background_info'):
-                                partial_result['background_info'] = node_data['background_info']
-                            if node_data.get('leadership_info'):
-                                partial_result['leadership_info'] = node_data['leadership_info']
-                            if node_data.get('reputation_info'):
-                                partial_result['reputation_info'] = node_data['reputation_info']
-                            if node_data.get('strategy_info'):
-                                partial_result['strategy_info'] = node_data['strategy_info']
-                            if node_data.get('aggregated_profile'):
-                                partial_result['aggregated_profile'] = node_data['aggregated_profile']
-                            if node_data.get('metadata'):
-                                partial_result['metadata'] = node_data['metadata']
-                            
-                            if partial_result:
+                            try:
                                 await websocket.send_text(json.dumps({
-                                    "type": "partial_result",
-                                    "data": partial_result
+                                    "type": "node_start", 
+                                    "data": {"node": node_name}
                                 }))
-                            
-                            await websocket.send_text(json.dumps({
-                                "type": "node_complete",
-                                "data": {"node": node_name}
-                            }))
-                            
-                            # Store the final state from the last event
-                            final_state = node_data
+                                
+                                # Check for node-level errors
+                                if node_data.get('error_message'):
+                                    failed_agents.append({
+                                        "node": node_name,
+                                        "error": node_data['error_message']
+                                    })
+                                    
+                                    # Send error notification but continue processing
+                                    await websocket.send_text(json.dumps({
+                                        "type": "node_error",
+                                        "data": {
+                                            "node": node_name,
+                                            "error": node_data['error_message']
+                                        }
+                                    }))
+                                    
+                                    print(f"Node {node_name} failed with error: {node_data['error_message']}")
+                                    
+                                else:
+                                    successful_agents.append(node_name)
+                                
+                                # Send partial results as they become available (with safe serialization)
+                                partial_result = {}
+                                try:
+                                    if node_data.get('background_info'):
+                                        partial_result['background_info'] = str(node_data['background_info'])
+                                    if node_data.get('leadership_info'):
+                                        partial_result['leadership_info'] = str(node_data['leadership_info'])
+                                    if node_data.get('reputation_info'):
+                                        partial_result['reputation_info'] = str(node_data['reputation_info'])
+                                    if node_data.get('strategy_info'):
+                                        partial_result['strategy_info'] = str(node_data['strategy_info'])
+                                    if node_data.get('aggregated_profile'):
+                                        partial_result['aggregated_profile'] = str(node_data['aggregated_profile'])
+                                    if node_data.get('metadata'):
+                                        # Safely serialize metadata
+                                        partial_result['metadata'] = make_json_serializable(node_data['metadata'])
+                                    
+                                    # Add execution status info
+                                    partial_result['execution_status'] = {
+                                        'successful_agents': successful_agents.copy(),
+                                        'failed_agents': failed_agents.copy(),
+                                        'current_node': node_name
+                                    }
+                                    
+                                    if partial_result:
+                                        await websocket.send_text(json.dumps({
+                                            "type": "partial_result",
+                                            "data": partial_result
+                                        }))
+                                        
+                                except Exception as serialize_error:
+                                    print(f"Error serializing partial results for {node_name}: {serialize_error}")
+                                    # Send minimal safe update
+                                    await websocket.send_text(json.dumps({
+                                        "type": "partial_result",
+                                        "data": {
+                                            "execution_status": {
+                                                "current_node": node_name,
+                                                "serialization_error": f"Could not serialize results from {node_name}"
+                                            }
+                                        }
+                                    }))
+                                
+                                await websocket.send_text(json.dumps({
+                                    "type": "node_complete",
+                                    "data": {"node": node_name}
+                                }))
+                                
+                                # Store the final state from the last event
+                                final_state = node_data
+                                
+                            except Exception as send_error:
+                                print(f"Error sending WebSocket message for {node_name}: {send_error}")
+                                failed_agents.append({
+                                    "node": node_name,
+                                    "error": f"Communication error: {str(send_error)}"
+                                })
+                                # Don't break - continue with next nodes
                     
-                    # Send the final complete result using the last streamed state
-                    if final_state:
-                        serializable_state = make_json_serializable(final_state)
-                        await websocket.send_text(json.dumps({"type": "final_result", "data": serializable_state}))
-                    else:
-                        await websocket.send_text(json.dumps({"type": "error", "data": "No final state received from streaming"}))
+                    # ALWAYS send a final result - this is critical
+                    print(f"Stream completed. Final state exists: {final_state is not None}")
+                    print(f"Successful agents: {successful_agents}")
+                    print(f"Failed agents: {failed_agents}")
+                    
+                    if websocket.client_state.value == 1:
+                        try:
+                            # Create comprehensive final result - even if completely failed
+                            if final_state:
+                                final_result = make_json_serializable(final_state)
+                            else:
+                                # Create minimal result structure if no final state
+                                final_result = {
+                                    "aggregated_profile": None,
+                                    "background_info": None,
+                                    "leadership_info": None,
+                                    "reputation_info": None,
+                                    "strategy_info": None,
+                                    "metadata": []
+                                }
+                            
+                            # Add execution summary
+                            final_result['execution_summary'] = {
+                                'total_agents': len(successful_agents) + len(failed_agents),
+                                'successful_agents': successful_agents,
+                                'failed_agents': failed_agents,
+                                'success_rate': len(successful_agents) / max(1, len(successful_agents) + len(failed_agents)) if (successful_agents or failed_agents) else 0,
+                                'status': 'complete_failure' if not successful_agents else ('partial_success' if failed_agents else 'complete_success'),
+                                'graph_completed': graph_completed
+                            }
+                            
+                            # Generate user-friendly summary message and ensure aggregated_profile exists
+                            if not successful_agents:
+                                final_result['user_message'] = "Profile generation failed. Please check your settings and try again."
+                                final_result['aggregated_profile'] = "Profile generation encountered errors and could not be completed. Please verify your input and try again."
+                            elif failed_agents:
+                                error_summary = f"Profile generated with {len(successful_agents)} successful components. "
+                                error_summary += f"{len(failed_agents)} components failed."
+                                final_result['user_message'] = error_summary
+                                # If no aggregated profile exists, create a basic one from available info
+                                if not final_result.get('aggregated_profile'):
+                                    final_result['aggregated_profile'] = f"Partial profile generated based on available information. Some analysis components failed."
+                            else:
+                                final_result['user_message'] = "Profile generated successfully with all components."
+                            
+
+                            print("Sending final result to client...")
+                            await websocket.send_text(json.dumps({"type": "final_result", "data": final_result}))
+                            print("Final result sent successfully")
+                                
+                        except Exception as final_send_error:
+                            print(f"Error sending final result: {final_send_error}")
+                            # Emergency fallback - send absolute minimal response
+                            try:
+                                await websocket.send_text(json.dumps({
+                                    "type": "final_result", 
+                                    "data": {
+                                        "aggregated_profile": "Profile generation encountered technical difficulties. Please try again.",
+                                        "execution_summary": {
+                                            "status": "system_error",
+                                            "user_message": "Technical error occurred. Please try again."
+                                        }
+                                    }
+                                }))
+                                print("Emergency fallback result sent")
+                            except Exception as emergency_error:
+                                print(f"Emergency fallback also failed: {emergency_error}")
                     
                 except Exception as e:
-                    await websocket.send_text(json.dumps({"type": "error", "data": str(e)}))
+                    print(f"Error during graph streaming: {e}")
+                    if websocket.client_state.value == 1:
+                        try:
+                            # Always send a final result, even on complete failure
+                            if successful_agents:
+                                await websocket.send_text(json.dumps({
+                                    "type": "final_result",
+                                    "data": {
+                                        "aggregated_profile": "Profile generation was partially successful but encountered system errors.",
+                                        "execution_summary": {
+                                            "status": "partial_failure",
+                                            "successful_agents": successful_agents,
+                                            "failed_agents": failed_agents + [{"node": "system", "error": str(e)}],
+                                            "user_message": f"Profile partially generated. System error: {str(e)}"
+                                        }
+                                    }
+                                }))
+                            else:
+                                await websocket.send_text(json.dumps({
+                                    "type": "final_result",
+                                    "data": {
+                                        "aggregated_profile": "Profile generation failed due to system errors. Please try again.",
+                                        "execution_summary": {
+                                            "status": "complete_failure",
+                                            "user_message": f"Profile generation failed: {str(e)}"
+                                        }
+                                    }
+                                }))
+                        except:
+                            print("Failed to send error message to WebSocket")
+                            
+                finally:
+                    # Clean up the generator properly
+                    if stream_generator is not None:
+                        try:
+                            await stream_generator.aclose()
+                        except Exception as cleanup_error:
+                            print(f"Error cleaning up stream generator: {cleanup_error}")
+                            
             else:
                 await websocket.send_text(json.dumps({"type": "error", "data": "Unknown message type"}))
+                
     except WebSocketDisconnect:
+        print("WebSocket disconnected normally")
         manager.disconnect(websocket)
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+        try:
+            manager.disconnect(websocket)
+        except:
+            pass
 
 if __name__ == "__main__":
     freeze_support()  # Required for Windows multiprocessing

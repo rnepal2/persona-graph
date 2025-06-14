@@ -77,6 +77,11 @@ function App() {
         setCurrentNode(data.node);
         setProgress(prev => [...prev, `Starting ${data.node}...`]);
       },
+      node_error: (data) => {
+        if (!isSubscribed) return;
+        setProgress(prev => [...prev, `⚠️ ${data.node} failed: ${data.error}`]);
+        // Don't set global error - let processing continue
+      },
       partial_result: (data) => {
         if (!isSubscribed) return;
         setStreamingResult(prev => ({
@@ -88,16 +93,29 @@ function App() {
       node_complete: (data) => {
         if (!isSubscribed) return;
         setCompletedNodes(prev => [...prev, data.node]);
-        setProgress(prev => [...prev, `Completed ${data.node}`]);
+        setProgress(prev => [...prev, `✅ Completed ${data.node}`]);
       },
       final_result: (data) => {
         if (!isSubscribed) return;
+        
+        // Handle enhanced final result with execution summary
         setResult(data);
         setStreamingResult(prev => ({ ...prev, ...data, isComplete: true }));
         updateCache(form, data);
         setLoading(false);
-        setError(null);
         setCurrentNode(null);
+        
+        // Show user-friendly message if there were issues
+        if (data.execution_summary && data.execution_summary.failed_agents?.length > 0) {
+          setError(`Profile generated with some limitations: ${data.user_message || 'Some components failed to complete.'}`);
+        } else {
+          setError(null);
+        }
+        
+        // Log execution summary for debugging
+        if (data.execution_summary) {
+          console.log('Execution Summary:', data.execution_summary);
+        }
       },
       result: (data) => {
         // Fallback for non-streaming result

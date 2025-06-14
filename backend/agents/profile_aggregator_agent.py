@@ -23,17 +23,27 @@ async def get_aggregated_profile(state: AgentState) -> str:
     context = f"""Name: {name} \n\n{context}"""
 
     if leadership:
-        context += f"Leadership Info: {', '.join(map(str, leadership))}. "
+        context += f"Leadership Agent Info:\n {', '.join(map(str, leadership))}. "
     if reputation:
-        context += f"Reputation Info: {', '.join(map(str, reputation))}. "
+        context += f"Reputation Agent Info:\n {', '.join(map(str, reputation))}. "
     if strategy:
-        context += f"Strategy Info: {', '.join(map(str, strategy))}. "
+        context += f"Strategy Agent Info:\n {', '.join(map(str, strategy))}. "
     context = str(context).strip()
-    aggregator_prompt = f"""Given the following information, create a comprehensive 
-    executive profile. Background Information: \n 
+
+    prompt = f"""You are an expert executive profile compiler. You are given with information 
+    collected from extensive web searches by AI agents for an executive/professional. Based on only the provided
+    information, create a comprehensive executive profile. The profile should be completely fact-based
+    on only provided information, and should not include any assumptions or opinions. It should be 
+    appropriately structured and formatted, based on the available information for the profile.
+
+    Remember, don't try to make up any information, or section when information not available. Your task 
+    is not to complete the profile of the executive, but to aggregate the information provided and present 
+    it in a structured manner that is informative, well-organized, and easy to read. The concatenated
+    form of all collected relevant information for the executive is provided below:\n
+
     {context}
     """
-    response = await get_gemini_response(aggregator_prompt, model_name="gemini-1.5-flash")
+    response = await get_gemini_response(prompt, model_name="gemini-2.0-flash")
     if response:
         return response.strip()
     return "No aggregated profile could be created!"

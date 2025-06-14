@@ -146,10 +146,13 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
                 scraped_text = None
         
         if scraper_used:
+            scraped_text = scraped_text.strip() if scraped_text else None
+            scraped_text = ' '.join(str(scraped_text).strip().split(' ')[:2000])
+            _snippet = ' '.join(str(scraped_text).strip().split(' ')[:300]) + "..." if scraped_text else None
             print(f"<<<[{agent_name}] Successfully processed {str(item.link)[:30] + '...' if len(str(item.link)) > 30 else str(item.link)} with {str(scraper_used).upper()}>>>")
             updated_item = item.model_copy(update={
                 'content': scraped_text, 
-                'snippet': item.snippet or (scraped_text[:300]+"..." if scraped_text else None)
+                'snippet': item.snippet or (_snippet+"..." if scraped_text else None)
             })
             processed_search_results.append(updated_item)
         else:
@@ -165,24 +168,43 @@ async def scrape_background_results_node(state: BackgroundAgentState) -> Backgro
 async def compile_background_details_node(state: BackgroundAgentState) -> BackgroundAgentState:
     print("[BackgroundAgent] Compiling background details...")
     
-    # Collect all available data
-    scraped_data = state.get('scraped_data', [])
-    search_results = state.get('search_results', [])
+    # Collect all available data with proper null checks
+    scraped_data = state.get('scraped_data') or []
+    search_results = state.get('search_results') or []
     initial_input = state.get('input_profile_summary', '')
     
-    # Store raw data and references in metadata
-    state['metadata'] = [{
-        "agent": "BackgroundAgent",
-        "background_references": search_results,
-        "raw_data": scraped_data,
-        "timestamp": str(datetime.now())
-    }]
+    # Ensure scraped_data is a list and handle None values
+    if scraped_data is None:
+        scraped_data = []
+    elif not isinstance(scraped_data, list):
+        scraped_data = [scraped_data] if scraped_data else []
     
-    # Prepare context for LLM
+    # Store raw data and references in metadata with proper handling
+    try:
+        state['metadata'] = [{
+            "agent": "BackgroundAgent",
+            "background_references": search_results if search_results else [],
+            "raw_data": scraped_data,
+            "timestamp": str(datetime.now())
+        }]
+    except Exception as e:
+        print(f"[BackgroundAgent] Error creating metadata: {e}")
+        state['metadata'] = []
+    
+    # Prepare context for LLM with safe iteration
     context = f"""Initial Profile Information:\n{initial_input}\n\nAdditional Information:"""
-    for i, data in enumerate(scraped_data, 1):
-        if data and len(data.strip()) > 0:
-            context += f"\nSource {i}:\n{data[:1000]}..." # Limit each source to prevent token overflow
+    
+    try:
+        # Safely iterate over scraped_data
+        if scraped_data and len(scraped_data) > 0:
+            for i, data in enumerate(scraped_data, 1):
+                if data is not None and isinstance(data, str) and len(data.strip()) > 0:
+                    context += f"\nSource {i}:\n{data[:1000]}..."
+        else:
+            context += "\nNo additional scraped data available."
+    except Exception as e:
+        print(f"[BackgroundAgent] Error processing scraped data: {e}")
+        context += "\nError processing additional data."
     
     # Generate summary using LLM
     system_prompt = """You are an expert biographer and research analyst. Create a concise but comprehensive 
@@ -209,7 +231,7 @@ async def compile_background_details_node(state: BackgroundAgentState) -> Backgr
             summary = "Unable to generate detailed background summary from available information."
     except Exception as e:
         print(f"[BackgroundAgent] Error generating summary: {e}")
-        summary = f"Error generating background summary for {state.get('name', 'Executive Name')}.\n Error: {str(e)}"
+        summary = f"Background analysis completed with limited information due to processing constraints."
     
     state['background_details'] = summary
     return state
@@ -261,52 +283,66 @@ async def background_agent_node(state: AgentState) -> AgentState:
     print("\n>>>[BackgroundAgent] Starting background search agent...")
     print("Name: ", state.get("name", "Executive Name"))
 
-    parent_input = state.get("leader_initial_input")
-    if parent_input is None:
-        print("[BackgroundAgentWrapper] Warning: No leader_initial_input found in parent state.")
-        parent_input = "No specific profile input provided for background analysis."
-
-    initial_subgraph_state = BackgroundAgentState(
-        name=state.get("name", "Executive Name"),
-        input_profile_summary=parent_input,
-        linkedin_url=None,
-        generated_queries=None,
-        search_results=None,
-        scraped_data=None,
-        background_details=None,
-        metadata=None,
-        error_message=None
-    )
-
     try:
-        print(f"[BackgroundAgentWrapper] Invoking subgraph with initial state: {{'input_profile_summary': '{parent_input[:50]}...'}}")
-        subgraph_final_state = await background_subgraph_app.ainvoke(initial_subgraph_state)
-        print(f"[BackgroundAgentWrapper] Subgraph finished successfully.")
+        parent_input = state.get("leader_initial_input")
+        if parent_input is None:
+            print("[BackgroundAgentWrapper] Warning: No leader_initial_input found in parent state.")
+            parent_input = "No specific profile input provided for background analysis."
+
+        initial_subgraph_state = BackgroundAgentState(
+            name=state.get("name", "Executive Name"),
+            input_profile_summary=parent_input,
+            linkedin_url=None,
+            generated_queries=None,
+            search_results=None,
+            scraped_data=None,
+            background_details=None,
+            metadata=None,
+            error_message=None
+        )
+
+        try:
+            print(f"[BackgroundAgentWrapper] Invoking subgraph with initial state")
+            subgraph_final_state = await background_subgraph_app.ainvoke(initial_subgraph_state)
+            print(f"[BackgroundAgentWrapper] Subgraph finished successfully.")
+        except Exception as e:
+            error_msg = f"BackgroundAgent subgraph failed: {str(e)}"
+            print(f"[BackgroundAgentWrapper] Error: {error_msg}")
+            
+            # Set error but don't stop the pipeline
+            state['error_message'] = error_msg
+            state['background_info'] = f"Background information could not be generated due to: {str(e)}"
+            state['next_agent_to_call'] = "LeadershipAgent"  # Continue to next agent
+            return state
+
+        if not subgraph_final_state:
+            error_msg = "BackgroundAgent: Subgraph returned no state."
+            state['error_message'] = error_msg
+            state['background_info'] = "Background information could not be generated."
+            print(f"[BackgroundAgentWrapper] Error: {error_msg}")
+            state['next_agent_to_call'] = "LeadershipAgent"  # Continue anyway
+            return state
+
+        # Extract results with fallbacks
+        background_summary = subgraph_final_state.get('background_details')
+        if isinstance(background_summary, str) and background_summary.strip():
+            state['background_info'] = background_summary
+        else:
+            print("[BackgroundAgentWrapper] Warning: No valid background summary generated.")
+            state['background_info'] = "Background information could not be generated from available sources."
+
+        # Add metadata if available
+        if subgraph_final_state.get('metadata'):
+            state['metadata'] = state.get('metadata', []) + subgraph_final_state['metadata']
+
+        print("[BackgroundAgentWrapper] Setting next agent to LeadershipAgent.")
+        state['next_agent_to_call'] = "LeadershipAgent"
+        
     except Exception as e:
-        error_msg = f"BackgroundAgent failed: {str(e)}"
-        print(f"[BackgroundAgentWrapper] Error: {error_msg}")
+        error_msg = f"BackgroundAgent critical error: {str(e)}"
+        print(f"[BackgroundAgentWrapper] Critical Error: {error_msg}")
         state['error_message'] = error_msg
-        return state
-
-    if not subgraph_final_state:
-        error_msg = "BackgroundAgent: Subgraph returned no state."
-        state['error_message'] = error_msg
-        print(f"[BackgroundAgentWrapper] Error: {error_msg}")
-        return state
-
-    background_summary = subgraph_final_state.get('background_details')
-    if isinstance(background_summary, str) and background_summary.strip():
-        state['background_info'] = background_summary
-    else:
-        print("[BackgroundAgentWrapper] Warning: No valid background summary generated.")
-        state['background_info'] = "No detailed background information available."
-
-    if subgraph_final_state.get('metadata'):
-        state['metadata'] = state.get('metadata', []) + subgraph_final_state['metadata']
-
-    if subgraph_final_state.get('error_message'):
-        state['error_message'] = subgraph_final_state['error_message']
-
-    print("[BackgroundAgentWrapper] Setting next agent to LeadershipAgent.")
-    state['next_agent_to_call'] = "LeadershipAgent"
+        state['background_info'] = "Background analysis encountered a critical error."
+        state['next_agent_to_call'] = "LeadershipAgent"  # Still try to continue
+        
     return state

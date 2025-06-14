@@ -147,9 +147,12 @@ async def scrape_strategy_results_node(state: StrategyAgentState) -> StrategyAge
 
         if scraper_used:
             print(f"[{agent_name}] Successfully processed {item.link} using {scraper_used}.")
+            scraped_text = scraped_text.strip() if scraped_text else None
+            scraped_text = ' '.join(str(scraped_text).strip().split(' ')[:2000])
+            _snippet = ' '.join(str(scraped_text).strip().split(' ')[:300]) + "..." if scraped_text else None
             updated_item = item.model_copy(update={
                 'content': scraped_text,
-                'snippet': item.snippet or (scraped_text[:250]+"..." if scraped_text else None)
+                'snippet': item.snippet or (_snippet if scraped_text else None)
             })
             processed_search_results.append(updated_item)
         else:
@@ -292,7 +295,5 @@ async def strategy_agent_node(state: AgentState): # Changed to async def
         print(f"[StrategyAgent] Error: {error_msg}")
         state['error_message'] = error_msg
         
-    print("[StrategyAgent] Finished processing.")
-    return state
     print("[StrategyAgent] Finished processing.")
     return state
