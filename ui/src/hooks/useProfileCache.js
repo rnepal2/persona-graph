@@ -60,9 +60,32 @@ export const useProfileCache = () => {
     setCachedResult(cacheKey, result);
   };
 
+  // New: Update streaming cache for partial results
+  const updateStreamingCache = (formData, partialResult, nodeComplete) => {
+    const cacheKey = `${generateCacheKey(formData)}_streaming`;
+    const existingCache = getCachedResult(cacheKey) || {};
+    
+    const updatedCache = {
+      ...existingCache,
+      ...partialResult,
+      lastUpdated: Date.now(),
+      completedNodes: [...(existingCache.completedNodes || []), nodeComplete].filter(Boolean)
+    };
+    
+    setCachedResult(cacheKey, updatedCache);
+  };
+
+  // New: Get streaming cache
+  const getStreamingCache = (formData) => {
+    const cacheKey = `${generateCacheKey(formData)}_streaming`;
+    return getCachedResult(cacheKey);
+  };
+
   return {
     checkCache,
     updateCache,
+    updateStreamingCache,
+    getStreamingCache,
     isCacheHit
   };
 };

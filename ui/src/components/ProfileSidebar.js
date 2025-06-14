@@ -7,6 +7,7 @@ import {
   ArrowPathIcon, 
   DocumentIcon, 
   DocumentTextIcon,
+  InboxStackIcon,
   ExclamationTriangleIcon,
   BriefcaseIcon,
   ClockIcon,
@@ -353,7 +354,7 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center space-x-3">
                 <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                  <DocumentTextIcon className="w-4 h-4 text-blue-600" />
+                  <InboxStackIcon className="w-5 h-5 text-blue-600" />
                 </div>
                 <div>
                   <h2 className="text-lg font-bold text-gray-800">Profile Library</h2>
@@ -403,8 +404,8 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
                   {loading ? 'Refreshing...' : 'Refresh'}
                 </span>
               </button>
-              <div className="flex items-center space-x-2 text-xs text-gray-500">
-                <DocumentTextIcon className="w-3 h-3" />
+              <div className="flex items-center space-x-1 text-xs text-gray-500">
+                <DocumentTextIcon className="w-4 h-4" />
                 <span>{validProfileCount} profile{validProfileCount !== 1 ? 's' : ''}</span>
               </div>
             </div>

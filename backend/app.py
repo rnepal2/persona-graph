@@ -442,6 +442,7 @@ async def websocket_endpoint(websocket: WebSocket):
             except Exception:
                 await websocket.send_text(json.dumps({"type": "error", "data": "Malformed message"}))
                 continue
+            
             if msg.get("type") == "enrich":
                 form = msg.get("data", {})
                 initial_input: AgentState = {
@@ -453,15 +454,61 @@ async def websocket_endpoint(websocket: WebSocket):
                     "background_info": None,
                     "aggregated_profile": None,
                     "error_message": None,
-                    "next_agent_to_call": None,                    "metadata": [{"source": "ws", "data": form}],
+                    "next_agent_to_call": None,
+                    "metadata": [{"source": "ws", "data": form}],
                     "history": None
                 }
                 try:
                     await websocket.send_text(json.dumps({"type": "progress", "data": "Starting enrichment..."}))
-                    final_state = await graph_app.ainvoke(initial_input)
-                    serializable_state = make_json_serializable(final_state)
-                    await websocket.send_text(json.dumps({"type": "progress", "data": "Enrichment complete."}))
-                    await websocket.send_text(json.dumps({"type": "result", "data": serializable_state}))
+                    
+                    # Track final state from streaming
+                    final_state = None
+                    
+                    # Stream the graph execution
+                    async for event in graph_app.astream(initial_input):
+                        # Send node start notifications
+                        for node_name, node_data in event.items():
+                            await websocket.send_text(json.dumps({
+                                "type": "node_start", 
+                                "data": {"node": node_name}
+                            }))
+                            
+                            # Send partial results as they become available
+                            partial_result = {}
+                            if node_data.get('background_info'):
+                                partial_result['background_info'] = node_data['background_info']
+                            if node_data.get('leadership_info'):
+                                partial_result['leadership_info'] = node_data['leadership_info']
+                            if node_data.get('reputation_info'):
+                                partial_result['reputation_info'] = node_data['reputation_info']
+                            if node_data.get('strategy_info'):
+                                partial_result['strategy_info'] = node_data['strategy_info']
+                            if node_data.get('aggregated_profile'):
+                                partial_result['aggregated_profile'] = node_data['aggregated_profile']
+                            if node_data.get('metadata'):
+                                partial_result['metadata'] = node_data['metadata']
+                            
+                            if partial_result:
+                                await websocket.send_text(json.dumps({
+                                    "type": "partial_result",
+                                    "data": partial_result
+                                }))
+                            
+                            await websocket.send_text(json.dumps({
+                                "type": "node_complete",
+                                "data": {"node": node_name}
+                            }))
+                            
+                            # Store the final state from the last event
+                            final_state = node_data
+                    
+                    # Send the final complete result using the last streamed state
+                    if final_state:
+                        serializable_state = make_json_serializable(final_state)
+                        await websocket.send_text(json.dumps({"type": "final_result", "data": serializable_state}))
+                    else:
+                        await websocket.send_text(json.dumps({"type": "error", "data": "No final state received from streaming"}))
+                    
                 except Exception as e:
                     await websocket.send_text(json.dumps({"type": "error", "data": str(e)}))
             else:
@@ -470,4 +517,19 @@ async def websocket_endpoint(websocket: WebSocket):
         manager.disconnect(websocket)
 
 if __name__ == "__main__":
-    uvicorn.run("app:app", host="0.0.0.0", port=5000, reload=True)
+    freeze_support()  # Required for Windows multiprocessing
+    print("🚀 Starting Persona-Graph Backend Server...")
+    print("📡 Backend will be available at: http://localhost:5000")
+    print("🔌 WebSocket endpoint: ws://localhost:5000/ws/enrich-profile")
+    print("📊 API Health check: http://localhost:5000/api/health")
+    print("💾 Database: SQLite (auto-created in /data directory)")
+    print("\n⚡ Starting server with streaming support...")
+    
+    uvicorn.run(
+        "app:app",
+        host="0.0.0.0",
+        port=5000,
+        reload=True,  # Auto-reload on code changes
+        log_level="info",
+        access_log=True
+    )

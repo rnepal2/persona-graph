@@ -5,10 +5,11 @@ import { useProfileCache } from './hooks/useProfileCache';
 import ResultsDisplay from './components/ResultsDisplay';
 import ProfileForm from './components/ProfileForm';
 import ProfileSidebar from './components/ProfileSidebar';
+import StreamingProgress from './components/StreamingProgress';
 import './styles/custom.css';
 
 const meshBgStyle = {
-  backgroundImage: "radial-gradient(circle,rgb(190, 196, 205) 1px, transparent 1px)",
+  backgroundImage: "radial-gradient(circle,rgb(143, 177, 229) 1px, transparent 1px)",
   backgroundSize: "24px 24px",
 };
 
@@ -28,6 +29,20 @@ function App() {
   const [progress, setProgress] = useState([]);
   const [wsState, setWsState] = useState('disconnected');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  
+  // New streaming states
+  const [streamingResult, setStreamingResult] = useState({
+    basic_info: null,
+    background_info: null,
+    leadership_info: null,
+    reputation_info: null,
+    strategy_info: null,
+    aggregated_profile: null,
+    metadata: [],
+    isComplete: false
+  });
+  const [currentNode, setCurrentNode] = useState(null);
+  const [completedNodes, setCompletedNodes] = useState([]);
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const connectionTimeoutRef = useRef(null);
@@ -57,7 +72,35 @@ function App() {
         setProgress(prev => [...prev, data]);
         setError(null);
       },
+      node_start: (data) => {
+        if (!isSubscribed) return;
+        setCurrentNode(data.node);
+        setProgress(prev => [...prev, `Starting ${data.node}...`]);
+      },
+      partial_result: (data) => {
+        if (!isSubscribed) return;
+        setStreamingResult(prev => ({
+          ...prev,
+          ...data,
+          isComplete: false
+        }));
+      },
+      node_complete: (data) => {
+        if (!isSubscribed) return;
+        setCompletedNodes(prev => [...prev, data.node]);
+        setProgress(prev => [...prev, `Completed ${data.node}`]);
+      },
+      final_result: (data) => {
+        if (!isSubscribed) return;
+        setResult(data);
+        setStreamingResult(prev => ({ ...prev, ...data, isComplete: true }));
+        updateCache(form, data);
+        setLoading(false);
+        setError(null);
+        setCurrentNode(null);
+      },
       result: (data) => {
+        // Fallback for non-streaming result
         if (!isSubscribed) return;
         setResult(data);
         updateCache(form, data);
@@ -68,6 +111,7 @@ function App() {
         if (!isSubscribed) return;
         setError(data);
         setLoading(false);
+        setCurrentNode(null);
       }
     };
     
@@ -183,8 +227,8 @@ function App() {
         clearTimeout(connectionTimeoutRef.current);
       }
     };
-  }, []); // No dependencies - we manage the connection lifecycle independently
-
+  }, []); 
+  // No dependencies - we manage the connection lifecycle independently
   // Function to ensure WebSocket is connected before sending
   const ensureWebSocketConnection = () => {
     return new Promise((resolve, reject) => {
@@ -221,6 +265,20 @@ function App() {
     setError(null);
     setProgress([]);
     setResult(null);
+    
+    // Reset streaming state
+    setStreamingResult({
+      basic_info: { name: form.name, company: form.company, title: form.title, linkedin_url: form.linkedin },
+      background_info: null,
+      leadership_info: null,
+      reputation_info: null,
+      strategy_info: null,
+      aggregated_profile: null,
+      metadata: [],
+      isComplete: false
+    });
+    setCurrentNode(null);
+    setCompletedNodes([]);
 
     // Check cache before making the request
     const cachedResult = checkCache(form);
@@ -249,7 +307,22 @@ function App() {
 
   const handleProfileSelect = (profile) => {
     setResult(profile);
-    // Clear any existing error when loading/unloading a profile
+    // Also update streaming result for consistency
+    if (profile) {
+      setStreamingResult({ ...profile, isComplete: true });
+    } else {
+      setStreamingResult({
+        basic_info: null,
+        background_info: null,
+        leadership_info: null,
+        reputation_info: null,
+        strategy_info: null,
+        aggregated_profile: null,
+        metadata: [],
+        isComplete: false
+      });
+    }
+    
     if (profile === null) {
       setError(null);
     }
@@ -269,29 +342,35 @@ function App() {
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen(!sidebarOpen)}
         onProfileSelect={handleProfileSelect}
-      />      {/* Main Content with sidebar offset */}
+      />      
+      {/* Main Content with sidebar offset */}
       <div className={`transition-all duration-300 ${sidebarOpen ? 'ml-80' : 'ml-20'} h-screen overflow-hidden`}>
-        <div className="h-full px-4 py-3">
+        <div className="h-full px-4 py-3 overflow-y-auto">
           <motion.div 
             layout
-            transition={{ duration: 1.2, ease: [0.4, 0.0, 0.2, 1] }}
-            className={`
-              h-full w-full
-              ${result 
-                ? 'grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-6' 
-                : 'flex justify-center items-start pt-8'
-              }
-            `}
-          >{/* Left column - Form and Progress */}          <motion.div
+            transition={{ 
+              duration: 0.9, 
+              ease: [0.32, 0.72, 0, 1], 
+              type: "tween",
+              layout: { duration: 0.9, ease: [0.32, 0.72, 0, 1] }
+            }}
+            className="w-full flex items-start pt-4 gap-6 min-h-full"
+          >
+            {/* Left column - Form and Progress */}
+            <motion.div
               layout
-              transition={{ duration: 1.2, ease: [0.4, 0.0, 0.2, 1] }}
-              className={`${result ? 'w-full h-full overflow-y-auto' : 'max-w-4xl w-full'} space-y-4`}
+              transition={{ 
+                duration: 0.9, 
+                ease: [0.32, 0.72, 0, 1], 
+                type: "tween" 
+              }}
+              className={`space-y-4 transition-all duration-900 ease-out ${result ? 'w-1/2 min-w-96' : 'w-full max-w-4xl mx-auto'}`}
               initial={{ opacity: 1 }}
               animate={{ opacity: 1 }}
             >
               <motion.div
                 layout
-                transition={{ duration: 1.2, ease: [0.4, 0.0, 0.2, 1] }}
+                transition={{ duration: 0.8, ease: [0.4, 0.0, 0.2, 1], type: "tween" }}
               >
                 <Card className="shadow-lg">
                   <h1 className="text-3xl text-red-700 font-bold mb-2">Persona-Graph: Executive Profile Generator</h1>
@@ -310,7 +389,7 @@ function App() {
                 </Card>
               </motion.div>
 
-              {/* Progress Section */}
+              {/* Progress Section - Enhanced for streaming */}
               {loading && (
                 <motion.div
                   initial={{ opacity: 0, y: 20 }}
@@ -325,15 +404,24 @@ function App() {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Processing
+                      Processing Profile
                     </h2>
-                    <div className="space-y-2">
-                      {progress.map((p, i) => (
+                    
+                    {/* Enhanced Streaming Progress */}
+                    <StreamingProgress 
+                      currentNode={currentNode}
+                      completedNodes={completedNodes}
+                    />
+                    
+                    {/* Progress Messages */}
+                    <div className="mt-4 space-y-1 max-h-32 overflow-y-auto border-t pt-3">
+                      <h3 className="text-sm font-medium text-gray-700 mb-2">Activity Log:</h3>
+                      {progress.slice(-8).map((p, i) => (
                         <motion.div
                           key={i}
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
-                          className="text-sm text-gray-600"
+                          className="text-xs text-gray-600 pl-2 border-l-2 border-gray-200"
                         >
                           {p}
                         </motion.div>
@@ -354,21 +442,44 @@ function App() {
                   <p className="text-red-700 text-sm">{error}</p>
                 </motion.div>
               )}
-            </motion.div>          {/* Right column - Results */}
+            </motion.div>
+
+            {/* Right column - Results with streaming support */}
             <AnimatePresence mode="wait">
-              {result && (
+              {(result || (streamingResult.basic_info && !streamingResult.isComplete)) && (
                 <motion.div
-                  layout
-                  initial={{ opacity: 0, x: 50, scale: 0.95 }}
-                  animate={{ opacity: 1, x: 0, scale: 1 }}
-                  exit={{ opacity: 0, x: 50, scale: 0.95 }}
-                  transition={{ duration: 1.2, ease: [0.4, 0.0, 0.2, 1] }}
-                  className="w-full h-full overflow-y-auto space-y-4"
+                  key="results"
+                  initial={{ opacity: 0, width: 0, scale: 0.95 }}
+                  animate={{ 
+                    opacity: 1, 
+                    width: "50%",
+                    scale: 1,
+                    transition: { 
+                      width: { duration: 0.9, ease: [0.32, 0.72, 0, 1] },
+                      opacity: { duration: 0.5, delay: 0.3, ease: "easeOut" },
+                      scale: { duration: 0.6, delay: 0.25, ease: "easeOut" }
+                    }
+                  }}
+                  exit={{ 
+                    opacity: 0,
+                    width: 0,
+                    scale: 0.95,
+                    transition: { 
+                      opacity: { duration: 0.25, ease: "easeIn" },
+                      scale: { duration: 0.3, ease: "easeIn" },
+                      width: { duration: 0.7, delay: 0.1, ease: [0.32, 0.72, 0, 1] }
+                    }
+                  }}
+                  className="min-w-96 overflow-hidden flex flex-col min-h-0"
+                  style={{ willChange: 'width, opacity, transform' }}
                 >
-                  <ResultsDisplay 
-                    result={result} 
-                    onProfileSaved={handleProfileSaved}
-                  />
+                  <div className="flex-1 min-h-0">
+                    <ResultsDisplay 
+                      result={result || streamingResult} 
+                      isStreaming={loading && !streamingResult.isComplete}
+                      onProfileSaved={handleProfileSaved}
+                    />
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
