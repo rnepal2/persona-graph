@@ -19,13 +19,24 @@ PersonaGraph uses an agentic backend built on LangGraph, where each major aspect
 - **Reputation Agent:** Assesses public reputation, media presence, and sentiment.
 - **Profile Aggregator:** Combines all agent outputs into a unified, referenced executive profile.
 
-Agents use Playwright-based and LLM-powered scrapers to extract and process web data. The LangGraph setup enables modular, parallel, and extensible enrichment pipelines.
+Agents use web search tools combined with advanced custom web scrapers and LLM-powered analysis to extract, rank, and process web data. The LangGraph setup enables modular, parallel, and extensible enrichment pipelines.
 
-## UI (Frontend)
-The frontend is a minimal React.js app (ShadCN UI, Tailwind CSS) for inputting executive details, selecting AI/search options, and viewing enriched profiles. It connects to the backend via WebSocket for real-time progress and results. 
+## Key Features
+- **Real-time Streaming:** Watch as each agent completes its analysis with live progress updates
+- **Profile Library:** Save, version, and manage executive profiles with a sleek sidebar interface
+- **Intelligent Caching:** Avoid duplicate processing with smart result caching
+- **Graceful Error Handling:** Partial results delivered even when some components fail
+- **Production-Ready:** Built for scalability with robust WebSocket streaming and database persistence
+
+## UI
+The frontend is a polished React.js app (ShadCN UI, Tailwind CSS, Framer Motion) featuring:
+- **Streaming Interface:** Real-time progress tracking with animated components
+- **Profile Management:** Intuitive collapsible sidebar for accessing saved profiles and versions
+- **Responsive Design:** Smooth animations and adaptive layouts for optimal user experience
+- **WebSocket Integration:** Live updates with intermediate progress streaming during the enrichment process
 
 ### Example Output
-Below is a snapshot of UI showing the result of executive profile search:
+Below is a snapshot of the UI showing the final generated profile [dynamic layout with animations during streaming]:
 
 <img src="ui/public/profile-snapshot.png" alt="Example Executive Profile" width="800"/>
 
@@ -43,14 +54,16 @@ Below is a snapshot of UI showing the result of executive profile search:
 - Install dependencies: `npm install`
 - Start the dev server:
   ```
+  cd ui
   npm start
   ```
 - Access the app at [http://localhost:3000](http://localhost:3000)
 
-## Development Notes
-- The frontend calls backend API endpoints for profile enrichment.
-- Backend uses async agentic graph (LangGraph) with multi-agent web search and AI assisted profile enrichment.
-- TODO: implement streaming to update intermediate agents ouputs
+### Development Notes
+- **Streaming Architecture:** WebSocket-based real-time communication between frontend and backend
+- **Agentic Graph:** LangGraph orchestrates specialized agents for different aspects of profile enrichment
+- **Database:** SQLite with automatic versioning for profile management
+- **Error Resilience:** Graceful degradation ensures partial results even with component failures
 
 ## License
 MIT
