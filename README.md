@@ -19,7 +19,9 @@ PersonaGraph uses an agentic backend built on LangGraph, where each major aspect
 - **Reputation Agent:** Assesses public reputation, media presence, and sentiment.
 - **Profile Aggregator:** Combines all agent outputs into a unified, referenced executive profile.
 
-Agents use web search tools combined with advanced custom web scrapers and LLM-powered analysis to extract, rank, and process web data. The LangGraph setup enables modular, parallel, and extensible enrichment pipelines.
+Agents use web search tools combined with advanced custom web scrapers and LLM-powered analysis to extract, rank, and process web data. The LangGraph setup enables modular, parallel, and extensible enrichment pipelines. *See the logic flow in graph below*:
+
+<img src="ui/public/GraphFlow.png" alt="Graph Logic Flow Diagram" width="300"/>
 
 ## Key Features
 - **Real-time Streaming:** Watch as each agent completes its analysis with live progress updates
