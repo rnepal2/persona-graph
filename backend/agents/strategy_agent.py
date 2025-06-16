@@ -247,7 +247,7 @@ strategy_graph.add_edge("compile_report", END)
 
 strategy_subgraph_app = strategy_graph.compile()
 
-async def strategy_agent_node(state: AgentState): # Changed to async def
+async def strategy_agent_node(state: AgentState):
     """Main entry point for StrategyAgent that interfaces with the broader pipeline"""
     print("\n>>>[StrategyAgent] Starting strategy analysis...")
     
@@ -284,8 +284,7 @@ async def strategy_agent_node(state: AgentState): # Changed to async def
             if final_strategy_state.get('metadata'):
                 state['metadata'] = state.get('metadata', []) + final_strategy_state['metadata']
             
-            # Set next agent only if successful
-            state['next_agent_to_call'] = "ProfileAggregatorAgent"
+            # Don't set next_agent_to_call - let graph handle routing
             
         except Exception as e:
             raise RuntimeError(f"Strategy subgraph execution failed: {str(e)}")

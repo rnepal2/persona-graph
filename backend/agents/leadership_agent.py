@@ -290,7 +290,6 @@ async def leadership_agent_node(state: AgentState) -> AgentState:
         
         # Run the leadership subgraph with proper async handling
         try:
-            # Use ainvoke() instead of direct call
             final_leadership_state = await leadership_subgraph_app.ainvoke(leadership_state)
             if not final_leadership_state:
                 raise ValueError("Leadership subgraph returned None state")
@@ -300,8 +299,7 @@ async def leadership_agent_node(state: AgentState) -> AgentState:
             if final_leadership_state.get('metadata'):
                 state['metadata'] = state.get('metadata', []) + final_leadership_state['metadata']
             
-            # Set next agent only if successful
-            state['next_agent_to_call'] = "ReputationAgent"
+            # Don't set next_agent_to_call - let graph handle routing
             
         except Exception as e:
             raise RuntimeError(f"Leadership subgraph execution failed: {str(e)}")
@@ -310,7 +308,9 @@ async def leadership_agent_node(state: AgentState) -> AgentState:
         error_msg = f"Leadership agent failed: {str(e)}"
         print(f"[LeadershipAgent] Error: {error_msg}")
         state['error_message'] = error_msg
-        # Don't set next_agent_to_call on error to allow error handling in main graph
+        
+    print(">>>[LeadershipAgent] Finished processing.")
+    return state
         
     print(">>>[LeadershipAgent] Finished processing.")
     return state

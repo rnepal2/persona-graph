@@ -5,30 +5,21 @@ from utils.llm_utils import get_gemini_response
 
 async def get_aggregated_profile(state: AgentState) -> str:
     name = state.get("name", "Executive Name")
-    background = state.get("background_info", {})
-    leadership = state.get("leadership_info", [])
-    reputation = state.get("reputation_info", [])
-    strategy = state.get("strategy_info", [])
+    background = state.get("background_info", "")
+    leadership = state.get("leadership_info", "")
+    reputation = state.get("reputation_info", "")
+    strategy = state.get("strategy_info", "")
 
-    context = ""
+    context = f"Name: {name}\n\n"
+    
     if background:
-        if isinstance(background, dict):
-            for key, value in background.items():
-                if isinstance(value, list):
-                    context += f"{key.capitalize()}: {', '.join(map(str, value))}. "
-                else:
-                    context += f"{key.capitalize()}: {value}. "
-        else:
-            context += f"Background: {background}."
-    context = f"""Name: {name} \n\n{context}"""
-
+        context += f"Background Information:\n{background}\n\n"
     if leadership:
-        context += f"Leadership Agent Info:\n {', '.join(map(str, leadership))}. "
+        context += f"Leadership Analysis:\n{leadership}\n\n"
     if reputation:
-        context += f"Reputation Agent Info:\n {', '.join(map(str, reputation))}. "
+        context += f"Reputation Assessment:\n{reputation}\n\n"
     if strategy:
-        context += f"Strategy Agent Info:\n {', '.join(map(str, strategy))}. "
-    context = str(context).strip()
+        context += f"Strategic Analysis:\n{strategy}\n\n"
 
     prompt = f"""You are an expert executive profile compiler. You are given with information 
     collected from extensive web searches by AI agents for an executive/professional. Based on only the provided
@@ -50,16 +41,51 @@ async def get_aggregated_profile(state: AgentState) -> str:
 
 async def profile_aggregator_node(state: AgentState) -> AgentState:
     print(">>>[Profile Aggregator Node] called.")
+    
+    # Check what data we have available
+    has_background = state.get("background_info") is not None
+    has_leadership = state.get("leadership_info") is not None
+    has_reputation = state.get("reputation_info") is not None
+    has_strategy = state.get("strategy_info") is not None
+    
+    print(f"[Profile Aggregator] Available info - Background: {has_background}, Leadership: {has_leadership}, Reputation: {has_reputation}, Strategy: {has_strategy}")
+    
+    # Wait for parallel agents to complete if we're in streaming mode
+    if not (has_leadership and has_reputation and has_strategy):
+        print("[Profile Aggregator] Waiting for parallel agents to complete...")
+        import asyncio
+        await asyncio.sleep(1)  # Brief wait
+        
+        # Re-check after waiting
+        has_leadership = state.get("leadership_info") is not None
+        has_reputation = state.get("reputation_info") is not None
+        has_strategy = state.get("strategy_info") is not None
+        
+        print(f"[Profile Aggregator] After wait - Leadership: {has_leadership}, Reputation: {has_reputation}, Strategy: {has_strategy}")
+    
+    # Generate profile with whatever data we have
     updated_state = state.copy()
     updated_state["aggregated_profile"] = await get_aggregated_profile(updated_state)
     updated_state["next_agent_to_call"] = None
+    
+    # Ensure metadata is properly initialized and collect references
     if updated_state.get('metadata') is None:
         updated_state['metadata'] = []
+    
+    # Collect all references from metadata
     all_refs = []
     for m in updated_state['metadata']:
-        for k, v in m.items():
-            if k.endswith('_references') and isinstance(v, list):
-                all_refs.extend(v)
-    updated_state['metadata'] = [m for m in updated_state['metadata'] if 'all_references' not in m]
-    updated_state['metadata'].append({'all_references': all_refs})
+        if isinstance(m, dict):
+            for k, v in m.items():
+                if k.endswith('_references') and isinstance(v, list):
+                    all_refs.extend(v)
+    
+    # Add aggregation metadata
+    updated_state['metadata'].append({
+        'agent': 'ProfileAggregator',
+        'all_references': all_refs,
+        'aggregation_completed': True
+    })
+    
+    print(f"[Profile Aggregator] Generated profile of length: {len(updated_state.get('aggregated_profile', ''))}")
     return updated_state

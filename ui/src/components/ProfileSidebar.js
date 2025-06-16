@@ -151,8 +151,6 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
     
     console.log('Version ID to use:', versionId);
     console.log('Currently loaded ID:', currentLoadedId);
-    console.log('Are they equal?:', currentLoadedId === versionId);
-    console.log('Is loadedProfileId null?:', loadedProfileId === null);
     
     // Check if this profile is already loaded - if so, unload it
     if (currentLoadedId === versionId && loadedProfileId !== null) {
@@ -179,7 +177,9 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
           
           // Convert database profile to ResultsDisplay format
           const resultFormat = {
+            id: fullProfile.id, // IMPORTANT: Include the actual database ID
             basic_info: {
+              id: fullProfile.id, // Also include in basic_info for redundancy
               name: fullProfile.name || profile.name || 'Unknown',
               company: fullProfile.company || '',
               title: fullProfile.title || '',
@@ -216,7 +216,12 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
             })()
           };
           
-          console.log('Calling onProfileSelect with converted data');
+          console.log('Calling onProfileSelect with converted data including ID:', resultFormat.id);
+          console.log('Profile data structure:', {
+            root_id: resultFormat.id,
+            basic_info_id: resultFormat.basic_info.id,
+            name: resultFormat.basic_info.name
+          });
           onProfileSelect(resultFormat);
         }
       } else {
@@ -413,7 +418,7 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-gray-50">
           {isOpen ? (
             // Expanded view - existing content
             <div className="p-4">
@@ -689,7 +694,7 @@ const ProfileSidebar = ({ isOpen, onToggle, onProfileSelect }) => {
         </div>
         
         {/* User Card at Bottom - always show but adapt to width */}
-        <div className={`border-t border-gray-200 bg-gradient-to-r from-slate-50 to-gray-50 ${isOpen ? 'p-4' : 'p-2'}`}>
+        <div className={`border-t border-gray-200 bg-gradient-to-r from-blue-100 to-indigo-100 ${isOpen ? 'p-4' : 'p-2'}`}>
           {isOpen ? (
             <div className="flex items-center space-x-3">
               <div className="w-8 h-8 bg-gradient-to-br from-gray-600 to-gray-800 rounded-full flex items-center justify-center">

@@ -29,6 +29,7 @@ function App() {
   const [progress, setProgress] = useState([]);
   const [wsState, setWsState] = useState('disconnected');
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [startTime, setStartTime] = useState(null);
   
   // New streaming states
   const [streamingResult, setStreamingResult] = useState({
@@ -77,6 +78,19 @@ function App() {
         setCurrentNode(data.node);
         setProgress(prev => [...prev, `Starting ${data.node}...`]);
       },
+      parallel_start: (data) => {
+        if (!isSubscribed) return;
+        console.log('Parallel execution starting:', data);
+        // Set a special state to indicate parallel execution has begun
+        setCurrentNode('parallel_execution');
+        setProgress(prev => [...prev, `🚀 ${data.message}`]);
+        
+        // Update streaming result to show we're in parallel phase
+        setStreamingResult(prev => ({
+          ...prev,
+          parallel_execution_started: true
+        }));
+      },
       node_error: (data) => {
         if (!isSubscribed) return;
         setProgress(prev => [...prev, `⚠️ ${data.node} failed: ${data.error}`]);
@@ -84,6 +98,8 @@ function App() {
       },
       partial_result: (data) => {
         if (!isSubscribed) return;
+        
+        // Simple merge - always update with new data
         setStreamingResult(prev => ({
           ...prev,
           ...data,
@@ -94,6 +110,11 @@ function App() {
         if (!isSubscribed) return;
         setCompletedNodes(prev => [...prev, data.node]);
         setProgress(prev => [...prev, `✅ Completed ${data.node}`]);
+        
+        // Clear the parallel execution indicator if we've moved past it
+        if (currentNode === 'parallel_execution') {
+          setCurrentNode(data.node);
+        }
       },
       final_result: (data) => {
         if (!isSubscribed) return;
@@ -104,6 +125,7 @@ function App() {
         updateCache(form, data);
         setLoading(false);
         setCurrentNode(null);
+        setStartTime(null); // Clear start time
         
         // Show user-friendly message if there were issues
         if (data.execution_summary && data.execution_summary.failed_agents?.length > 0) {
@@ -283,6 +305,7 @@ function App() {
     setError(null);
     setProgress([]);
     setResult(null);
+    setStartTime(Date.now()); // Set start time
     
     // Reset streaming state
     setStreamingResult({
@@ -429,6 +452,7 @@ function App() {
                     <StreamingProgress 
                       currentNode={currentNode}
                       completedNodes={completedNodes}
+                      startTime={startTime}
                     />
                     
                     {/* Progress Messages */}

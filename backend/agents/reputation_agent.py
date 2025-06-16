@@ -246,7 +246,7 @@ reputation_graph.add_edge("compile_report", END)
 reputation_subgraph_app = reputation_graph.compile()
 
 # Wrapper node for the ReputationAgent subgraph
-async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to async def
+async def reputation_agent_node(state: AgentState) -> AgentState:
     """Main entry point for ReputationAgent that interfaces with the broader pipeline"""
     print("\n>>>[ReputationAgent] Starting reputation analysis...")
     
@@ -283,8 +283,7 @@ async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to a
             if final_reputation_state.get('metadata'):
                 state['metadata'] = state.get('metadata', []) + final_reputation_state['metadata']
             
-            # Set next agent only if successful
-            state['next_agent_to_call'] = "StrategyAgent"
+            # Don't set next_agent_to_call - let graph handle routing
             
         except Exception as e:
             raise RuntimeError(f"Reputation subgraph execution failed: {str(e)}")
@@ -295,4 +294,5 @@ async def reputation_agent_node(state: AgentState) -> AgentState: # Changed to a
         state['error_message'] = error_msg
         
     print("[ReputationAgent] Finished processing.")
+    return state
     return state

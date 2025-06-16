@@ -70,32 +70,35 @@ async def filter_search_results_logic(
             2.  **Analyze Article:** Extract key identifying details from the 'ARTICLE DETAILS'.
             3.  **Compare and Contrast:**
                 - Look for details that match with the profile.
-                - Any details that CONFLICT or are INCONSISTENT, for example same name but different educational and professional background.
-                - Note if the article is too generic to make a confident decision.
+                - Any details that CONFLICT or are INCONSISTENT, eg. same name but different educational and professional background than provided profile summary.
+                - If the article is too generic to make a confident decision, return irrelevant.
+                - Use provided profile summary and agent query focus to to check conflict/alignment.
+                - For example, same person is less likely to be a Data Scientist at a company and Professor at a different University as the same time.
             4.  **Decision Criteria:** Make objective decision based on the analysis about article relevance.
 
             [DECISION & OUTPUT FORMAT]
-            "YES" or "NO"
+            Relevance: "YES" or "NO"
         """
-
-        print(f"[RankSearchItem] Evaluating relevance for: {item.title} (Link: {item.link})")
         prompt = f"{system_prompt} \n\n {user_prompt}"
         llm_response = await get_gemini_response(prompt=prompt, model_name="gemini-2.0-flash")
         
         is_relevant = False
         if llm_response and 'YES' in llm_response.strip().upper():
-            print(f">>>[RankSearchItem] ✓ RELEVANT by LLM: {item.title}")
             is_relevant = True
-        else:
-            if llm_response is None:
-                print(f">>>[RankSearchItem] ✗ NOT RELEVANT (LLM call failed or no response), Title: {item.title}")
-            else:
-                print(f">>>[RankSearchItem] ✗ NOT RELEVANT, Title: {item.title}")
         return item, is_relevant
 
     # Step 3: Execute LLM relevance checks in parallel
     relevance_tasks = [check_relevance(item) for item in domain_filtered_results]
     relevance_results = await asyncio.gather(*relevance_tasks)
+
+    print(f">>>[RankSearchItem] Completed LLM relevance checks on {len(relevance_results)} articles:")
+    for item, is_relevant in relevance_results:
+        if is_relevant:
+            print(f"\n>>>[RankSearchItem] ✓ RELEVANT: {item.title} (Link: {item.link})")
+            print(f">>>[Article Snippet]: {item.snippet}")
+        else:
+            print(f"\n>>>[RankSearchItem] ✗ NOT RELEVANT: {item.title} (Link: {item.link})")
+            print(f">>>[Article Snippet]: {item.snippet}")
 
     # Step 4: Filter based on LLM relevance results
     filtered_results = [item for item, is_relevant in relevance_results if is_relevant]

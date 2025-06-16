@@ -27,55 +27,55 @@ graph.add_node("profile_aggregator_node", profile_aggregator_node)
 # Set entry point
 graph.add_edge(START, "planner_supervisor_node")
 
-# Conditional routing
-def should_continue(state: AgentState) -> str:
+# Conditional routing with parallel execution support
+def should_continue_from_planner(state: AgentState) -> str:
+    if state.get("error_message"):
+        print("Error detected from planner, routing to END.")
+        return END
+    return "background_agent_node"
+
+def should_continue_from_background(state: AgentState) -> list:
+    if state.get("error_message"):
+        print("Error detected from background, routing to END.")
+        return END
+    
+    # Fan out to parallel execution of three agents
+    print("Background completed successfully, starting parallel execution of Leadership, Reputation, and Strategy agents")
+    return ["leadership_agent_node", "reputation_agent_node", "strategy_agent_node"]
+
+def should_continue_to_aggregator(state: AgentState) -> str:
     if state.get("error_message"):
         print("Error detected, routing to END.")
         return END
     
-    next_agent = state.get("next_agent_to_call")
-    print(f"Routing based on next_agent_to_call: {next_agent}")
-
-    # Order: Planner -> Background -> Leadership -> Reputation -> Strategy -> Aggregator
-    if next_agent == "BackgroundAgent":
-        return "background_agent_node"
-    elif next_agent == "LeadershipAgent":
-        return "leadership_agent_node"
-    elif next_agent == "ReputationAgent":
-        return "reputation_agent_node"
-    elif next_agent == "StrategyAgent":
-        return "strategy_agent_node"
-    elif next_agent == "ProfileAggregatorAgent":
-        return "profile_aggregator_node"
-    else:
-        print(f"No specific valid next agent, or end of defined flow. Next agent: {next_agent}. Routing to END.")
-        return END
+    # ALWAYS route to aggregator - let it decide if it has enough data
+    print("Routing to profile aggregator...")
+    return "profile_aggregator_node"
 
 # Add conditional edges
 graph.add_conditional_edges(
     "planner_supervisor_node",
-    should_continue,
+    should_continue_from_planner,
 )
+
 graph.add_conditional_edges(
-    "background_agent_node",
-    should_continue,
+    "background_agent_node", 
+    should_continue_from_background,
 )
+
+# Three parallel agents route to aggregator agent
 graph.add_conditional_edges(
     "leadership_agent_node",
-    should_continue,
+    should_continue_to_aggregator,
 )
 graph.add_conditional_edges(
-    "reputation_agent_node",
-    should_continue,
+    "reputation_agent_node", 
+    should_continue_to_aggregator,
 )
 graph.add_conditional_edges(
     "strategy_agent_node",
-    should_continue,
+    should_continue_to_aggregator,
 )
 graph.add_edge("profile_aggregator_node", END)
-
-
-# Compile the graph
 app = graph.compile()
-
-print("LangGraph app compiled successfully.")
+print("LangGraph app compiled successfully with parallel execution support.")

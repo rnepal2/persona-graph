@@ -413,6 +413,169 @@ async def delete_profile(profile_id: int):
             status_code=500
         )
 
+@app.post("/api/update-profile-section")
+async def update_profile_section(request: Request):
+    """Update a specific section of a profile"""
+    try:
+        data = await request.json()
+        user_id = get_current_user_id()
+        
+        profile_data = data.get('profile_data', {})
+        section = data.get('section')
+        content = data.get('content')
+        
+        print(f"[API] Section update request:")
+        print(f"[API] - Section: {section}")
+        print(f"[API] - Content length: {len(content) if content else 0}")
+        print(f"[API] - Profile data: {profile_data}")
+        
+        if not section or content is None:
+            return JSONResponse(
+                {"success": False, "error": "Section and content are required"},
+                status_code=400
+            )
+        
+        # IMPORTANT: Get the CURRENT profile from the UI data, not just the latest from DB
+        current_profile = None
+        
+        # First, try to get profile ID from the profile_data if it exists
+        if profile_data.get('id'):
+            print(f"[API] Using profile ID from profile_data: {profile_data.get('id')}")
+            from utils.database import get_profile
+            current_profile = get_profile(profile_data.get('id'), user_id)
+        
+        # If no ID in profile_data, fall back to finding by name and linkedin
+        if not current_profile:
+            # Extract basic info to find the profile
+            basic_info = profile_data.get('basic_info', {})
+            name = basic_info.get('name') or profile_data.get('name', '')
+            linkedin_url = basic_info.get('linkedin_url') or profile_data.get('linkedin_url', '')
+            
+            if not name:
+                return JSONResponse(
+                    {"success": False, "error": "Profile name is required to update"},
+                    status_code=400
+                )
+            
+            print(f"[API] Finding profile by name and LinkedIn: {name}, {linkedin_url}")
+            from utils.database import get_profile_by_name_and_linkedin
+            current_profile = get_profile_by_name_and_linkedin(name, linkedin_url, user_id)
+        
+        if not current_profile:
+            return JSONResponse(
+                {"success": False, "error": "Profile not found"},
+                status_code=404
+            )
+        
+        print(f"[API] Found profile ID: {current_profile['id']} for section update")
+        
+        # Update the specific section with enhanced field mapping
+        update_data = {}
+        section_mapping = {
+            'aggregated_profile': 'executive_profile',
+            'background_info': 'professional_background',
+            'leadership_info': 'leadership_summary',
+            'reputation_info': 'reputation_summary',
+            'strategy_info': 'strategy_summary'
+        }
+        
+        db_field = section_mapping.get(section, section)
+        update_data[db_field] = content
+        
+        print(f"[API] Updating database field '{db_field}' with content length: {len(content)}")
+        
+        # Update in database
+        from utils.database import update_profile_section as db_update_section
+        success = db_update_section(current_profile['id'], update_data, user_id)
+        
+        if success:
+            print(f"[API] Successfully updated section '{section}' for profile {current_profile['id']}")
+            return {"success": True, "message": "Section updated successfully"}
+        else:
+            return JSONResponse(
+                {"success": False, "error": "Failed to update section"},
+                status_code=500
+            )
+        
+    except Exception as e:
+        print(f"Error updating profile section: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
+@app.post("/api/update-profile-references")
+async def update_profile_references(request: Request):
+    """Update references for a profile"""
+    try:
+        data = await request.json()
+        user_id = get_current_user_id()
+        
+        profile_data = data.get('profile_data', {})
+        references = data.get('references', [])
+        
+        print(f"[API] Updating references for profile: {profile_data}")
+        print(f"[API] New references count: {len(references)}")
+        
+        # Extract basic info to find the profile
+        basic_info = profile_data.get('basic_info', {})
+        name = basic_info.get('name') or profile_data.get('name', '')
+        linkedin_url = basic_info.get('linkedin_url') or profile_data.get('linkedin_url', '')
+        
+        if not name:
+            return JSONResponse(
+                {"success": False, "error": "Profile name is required to update references"},
+                status_code=400
+            )
+        
+        # IMPORTANT: Get the CURRENT profile from the UI data, not just the latest from DB
+        # The profile_data should contain the actual profile being viewed
+        current_profile = None
+        
+        # First, try to get profile ID from the profile_data if it exists
+        if profile_data.get('id'):
+            print(f"[API] Using profile ID from profile_data: {profile_data.get('id')}")
+            from utils.database import get_profile
+            current_profile = get_profile(profile_data.get('id'), user_id)
+        
+        # If no ID in profile_data, fall back to finding by name and linkedin
+        if not current_profile:
+            print(f"[API] Finding profile by name and LinkedIn: {name}, {linkedin_url}")
+            from utils.database import get_profile_by_name_and_linkedin
+            current_profile = get_profile_by_name_and_linkedin(name, linkedin_url, user_id)
+        
+        if not current_profile:
+            return JSONResponse(
+                {"success": False, "error": "Profile not found"},
+                status_code=404
+            )
+        
+        print(f"[API] Found profile ID: {current_profile['id']} for references update")
+        
+        # Update references in database
+        from utils.database import update_profile_references as db_update_references
+        success = db_update_references(current_profile['id'], references, user_id)
+        
+        if success:
+            print(f"[API] Successfully updated references for profile {current_profile['id']}")
+            return {"success": True, "message": "References updated successfully"}
+        else:
+            return JSONResponse(
+                {"success": False, "error": "Failed to update references"},
+                status_code=500
+            )
+        
+    except Exception as e:
+        print(f"Error updating profile references: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
+
 # --- WebSocket connection manager ---
 class ConnectionManager:
     def __init__(self):
@@ -446,8 +609,8 @@ async def websocket_endpoint(websocket: WebSocket):
             if msg.get("type") == "enrich":
                 form = msg.get("data", {})
                 initial_input: AgentState = {
-                    "name": form.get("name"),
-                    "leader_initial_input": form.get("summary") or form.get("linkedin") or "",
+                    "name": form.get("name", "Unknown Executive"),
+                    "leader_initial_input": form.get("summary", "") or form.get("linkedin", "") or "",
                     "leadership_info": None,
                     "reputation_info": None,
                     "strategy_info": None,
@@ -455,7 +618,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     "aggregated_profile": None,
                     "error_message": None,
                     "next_agent_to_call": None,
-                    "metadata": [{"source": "ws", "data": form}],
+                    "metadata": [],
                     "history": None
                 }
                 
@@ -492,6 +655,17 @@ async def websocket_endpoint(websocket: WebSocket):
                                     "type": "node_start", 
                                     "data": {"node": node_name}
                                 }))
+                                
+                                # Special handling for background agent completion - signal parallel start
+                                if node_name == "background_agent_node" and not node_data.get('error_message'):
+                                    print("Background agent completed - signaling parallel execution start")
+                                    await websocket.send_text(json.dumps({
+                                        "type": "parallel_start",
+                                        "data": {
+                                            "parallel_nodes": ["leadership_agent_node", "reputation_agent_node", "strategy_agent_node"],
+                                            "message": "Starting parallel analysis of Leadership, Reputation, and Strategy"
+                                        }
+                                    }))
                                 
                                 # Check for node-level errors
                                 if node_data.get('error_message'):
@@ -693,6 +867,54 @@ async def websocket_endpoint(websocket: WebSocket):
             manager.disconnect(websocket)
         except:
             pass
+
+@app.post("/api/update-existing-profile")
+async def update_existing_profile(request: Request):
+    """Update an existing profile in place instead of creating a new version"""
+    try:
+        data = await request.json()
+        user_id = get_current_user_id()
+        
+        print(f"Received update request for existing profile")
+        
+        # Extract profile data using existing function
+        profile_data = extract_profile_data_from_result(data)
+        
+        print(f"Updating profile: {profile_data.get('name')}")
+        
+        # Get the current profile from database
+        from utils.database import get_profile_by_name_and_linkedin, update_full_profile
+        current_profile = get_profile_by_name_and_linkedin(
+            profile_data.get('name'), 
+            profile_data.get('linkedin_url'), 
+            user_id
+        )
+        
+        if not current_profile:
+            # If profile doesn't exist, create it as new
+            print("Profile not found, creating new one")
+            profile_id = save_profile(profile_data, user_id)
+            return {"success": True, "profile_id": profile_id, "message": "New profile created successfully"}
+        
+        # Update the existing profile completely
+        success = update_full_profile(current_profile['id'], profile_data, user_id)
+        
+        if success:
+            return {"success": True, "profile_id": current_profile['id'], "message": "Profile updated successfully"}
+        else:
+            return JSONResponse(
+                {"success": False, "error": "Failed to update profile"},
+                status_code=500
+            )
+        
+    except Exception as e:
+        print(f"Error updating existing profile: {e}")
+        import traceback
+        traceback.print_exc()
+        return JSONResponse(
+            {"success": False, "error": str(e)},
+            status_code=500
+        )
 
 if __name__ == "__main__":
     freeze_support()  # Required for Windows multiprocessing

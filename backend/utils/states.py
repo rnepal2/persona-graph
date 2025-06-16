@@ -1,4 +1,5 @@
 # states.py
+# TODO: New idea only, not implemented yet.
 # New idea for more targeted information gathering and analysis
 
 from __future__ import annotations

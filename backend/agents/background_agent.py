@@ -309,10 +309,9 @@ async def background_agent_node(state: AgentState) -> AgentState:
             error_msg = f"BackgroundAgent subgraph failed: {str(e)}"
             print(f"[BackgroundAgentWrapper] Error: {error_msg}")
             
-            # Set error but don't stop the pipeline
+            # Set error but don't set next_agent - let graph handle routing
             state['error_message'] = error_msg
             state['background_info'] = f"Background information could not be generated due to: {str(e)}"
-            state['next_agent_to_call'] = "LeadershipAgent"  # Continue to next agent
             return state
 
         if not subgraph_final_state:
@@ -320,7 +319,6 @@ async def background_agent_node(state: AgentState) -> AgentState:
             state['error_message'] = error_msg
             state['background_info'] = "Background information could not be generated."
             print(f"[BackgroundAgentWrapper] Error: {error_msg}")
-            state['next_agent_to_call'] = "LeadershipAgent"  # Continue anyway
             return state
 
         # Extract results with fallbacks
@@ -334,15 +332,12 @@ async def background_agent_node(state: AgentState) -> AgentState:
         # Add metadata if available
         if subgraph_final_state.get('metadata'):
             state['metadata'] = state.get('metadata', []) + subgraph_final_state['metadata']
-
-        print("[BackgroundAgentWrapper] Setting next agent to LeadershipAgent.")
-        state['next_agent_to_call'] = "LeadershipAgent"
+        print("[BackgroundAgentWrapper] Background agent completed successfully.")
         
     except Exception as e:
         error_msg = f"BackgroundAgent critical error: {str(e)}"
         print(f"[BackgroundAgentWrapper] Critical Error: {error_msg}")
         state['error_message'] = error_msg
         state['background_info'] = "Background analysis encountered a critical error."
-        state['next_agent_to_call'] = "LeadershipAgent"  # Still try to continue
         
     return state

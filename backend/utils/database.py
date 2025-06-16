@@ -301,5 +301,225 @@ def delete_profile(profile_id: int, current_user_id: int) -> bool:
     finally:
         conn.close()
 
+def get_profile_by_name_and_linkedin(name: str, linkedin_url: str, current_user_id: int) -> dict:
+    """Get the latest profile by name and LinkedIn URL for a specific user"""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    
+    cursor.execute("""
+        SELECT ep.* FROM executive_profiles ep
+        LEFT JOIN profile_access pa ON ep.id = pa.profile_id
+        WHERE ep.name = ? AND ep.linkedin_url = ? AND ep.is_latest = 1
+        AND (ep.user_id = ? OR pa.user_id = ?)
+        ORDER BY ep.version DESC
+        LIMIT 1
+    """, (name, linkedin_url or '', current_user_id, current_user_id))
+    
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        profile = dict(row)
+        if profile.get('references_data'):
+            try:
+                profile['references_data'] = json.loads(profile['references_data'])
+            except:
+                profile['references_data'] = []
+        return profile
+    return None
+
+def update_profile_section(profile_id: int, update_data: dict, current_user_id: int) -> bool:
+    """Update specific fields of a profile"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        print(f"[DB] Updating section for profile ID: {profile_id}")
+        print(f"[DB] User ID: {current_user_id}")
+        print(f"[DB] Update data: {update_data}")
+        
+        # First check if user has access to this profile
+        cursor.execute("""
+            SELECT ep.id FROM executive_profiles ep
+            LEFT JOIN profile_access pa ON ep.id = pa.profile_id
+            WHERE ep.id = ? AND (ep.user_id = ? OR pa.user_id = ?)
+        """, (profile_id, current_user_id, current_user_id))
+        
+        profile_check = cursor.fetchone()
+        if not profile_check:
+            print(f"[DB] Access denied for profile {profile_id} and user {current_user_id}")
+            conn.close()
+            return False
+        
+        print(f"[DB] Access confirmed for profile {profile_id}")
+        
+        # Prepare update query
+        if not update_data:
+            print(f"[DB] No update data provided")
+            conn.close()
+            return True
+        
+        # Add updated_at timestamp
+        update_data['updated_at'] = datetime.now().isoformat()
+        
+        # Build update query
+        set_clauses = [f"{key} = ?" for key in update_data.keys()]
+        query = f"UPDATE executive_profiles SET {', '.join(set_clauses)} WHERE id = ?"
+        values = list(update_data.values()) + [profile_id]
+        
+        print(f"[DB] Executing query: {query}")
+        print(f"[DB] Values: {[v[:100] + '...' if isinstance(v, str) and len(v) > 100 else v for v in values]}")
+        
+        cursor.execute(query, values)
+        rows_affected = cursor.rowcount
+        
+        print(f"[DB] Rows affected by section update: {rows_affected}")
+        
+        if rows_affected > 0:
+            conn.commit()
+            print(f"[DB] Successfully committed section update for profile {profile_id}")
+            
+            # Verify the update
+            field_name = list(update_data.keys())[0]  # Get the first field that was updated
+            if field_name != 'updated_at':  # Don't verify the timestamp
+                cursor.execute(f"SELECT {field_name} FROM executive_profiles WHERE id = ?", (profile_id,))
+                verification = cursor.fetchone()
+                if verification:
+                    stored_value = verification[0]
+                    print(f"[DB] Verification - stored {field_name} length: {len(stored_value) if stored_value else 0}")
+            
+            return True
+        else:
+            print(f"[DB] No rows were updated for profile {profile_id}")
+            conn.rollback()
+            return False
+        
+    except Exception as e:
+        print(f"[DB] Error updating profile section: {e}")
+        import traceback
+        traceback.print_exc()
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+def update_profile_references(profile_id: int, references: list, current_user_id: int) -> bool:
+    """Update references for a profile"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        print(f"[DB] Updating references for profile ID: {profile_id}")
+        print(f"[DB] User ID: {current_user_id}")
+        print(f"[DB] New references count: {len(references)}")
+        
+        # First check if user has access to this profile
+        cursor.execute("""
+            SELECT ep.id FROM executive_profiles ep
+            LEFT JOIN profile_access pa ON ep.id = pa.profile_id
+            WHERE ep.id = ? AND (ep.user_id = ? OR pa.user_id = ?)
+        """, (profile_id, current_user_id, current_user_id))
+        
+        profile_check = cursor.fetchone()
+        if not profile_check:
+            print(f"[DB] Access denied for profile {profile_id} and user {current_user_id}")
+            conn.close()
+            return False
+        
+        print(f"[DB] Access confirmed for profile {profile_id}")
+        
+        # Prepare references data - ensure it's properly serialized
+        references_json = json.dumps(references) if references else '[]'
+        print(f"[DB] Serialized references: {references_json[:200]}...")
+        
+        # Update references with explicit transaction
+        cursor.execute("""
+            UPDATE executive_profiles 
+            SET references_data = ?, updated_at = ?
+            WHERE id = ?
+        """, (references_json, datetime.now().isoformat(), profile_id))
+        
+        rows_affected = cursor.rowcount
+        print(f"[DB] Rows affected by update: {rows_affected}")
+        
+        if rows_affected > 0:
+            conn.commit()
+            print(f"[DB] Successfully committed references update for profile {profile_id}")
+            
+            # Verify the update
+            cursor.execute("SELECT references_data FROM executive_profiles WHERE id = ?", (profile_id,))
+            verification = cursor.fetchone()
+            if verification:
+                print(f"[DB] Verification - stored references length: {len(verification[0]) if verification[0] else 0}")
+            
+            return True
+        else:
+            print(f"[DB] No rows were updated for profile {profile_id}")
+            conn.rollback()
+            return False
+        
+    except Exception as e:
+        print(f"[DB] Error updating profile references: {e}")
+        import traceback
+        traceback.print_exc()
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
+def update_full_profile(profile_id: int, profile_data: dict, current_user_id: int) -> bool:
+    """Update all fields of an existing profile"""
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    
+    try:
+        # First check if user has access to this profile
+        cursor.execute("""
+            SELECT ep.id FROM executive_profiles ep
+            LEFT JOIN profile_access pa ON ep.id = pa.profile_id
+            WHERE ep.id = ? AND (ep.user_id = ? OR pa.user_id = ?)
+        """, (profile_id, current_user_id, current_user_id))
+        
+        if not cursor.fetchone():
+            conn.close()
+            return False
+        
+        # Prepare update data - handle references_data serialization
+        update_data = profile_data.copy()
+        if 'references_data' in update_data and isinstance(update_data['references_data'], (list, dict)):
+            update_data['references_data'] = json.dumps(update_data['references_data'])
+        
+        # Add updated_at timestamp
+        update_data['updated_at'] = datetime.now().isoformat()
+        
+        # Remove fields that shouldn't be updated
+        update_data.pop('id', None)
+        update_data.pop('user_id', None)
+        update_data.pop('version', None)
+        update_data.pop('is_latest', None)
+        update_data.pop('created_at', None)
+        
+        if not update_data:
+            conn.close()
+            return True
+        
+        # Build update query
+        set_clauses = [f"{key} = ?" for key in update_data.keys()]
+        query = f"UPDATE executive_profiles SET {', '.join(set_clauses)} WHERE id = ?"
+        values = list(update_data.values()) + [profile_id]
+        
+        cursor.execute(query, values)
+        conn.commit()
+        
+        return cursor.rowcount > 0
+        
+    except Exception as e:
+        print(f"Error updating full profile: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
 # Initialize database when module is imported
 init_db()

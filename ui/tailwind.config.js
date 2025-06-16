@@ -2,14 +2,12 @@
 module.exports = {
   content: [
     "./src/**/*.{js,jsx,ts,tsx}",
-    "./public/index.html"
   ],
   theme: {
     extend: {
       fontFamily: {
         sans: [
           'Inter',
-          'ui-sans-serif',
           'system-ui',
           'Segoe UI',
           'Roboto',
@@ -40,6 +38,8 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    require('@tailwindcss/typography'),
+  ],
 }
 
