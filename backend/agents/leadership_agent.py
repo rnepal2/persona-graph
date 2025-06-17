@@ -48,6 +48,9 @@ async def generate_leadership_queries_node(state: LeadershipAgentState) -> Leade
     include queries (one or more depending upon their leadership history) that will gather information 
     on how the corresponding product or business performed during their tenure. Any insight that informs 
     measurable outcomes of their leadership is highly valuabe.
+    Eg: How did the product X of the company performing during 2020 to 2023?
+        How was the Orthopedic business of company Y performing during 2018 to 2022? 
+        etc.
 
     Return the queries as a numbered list, each query on a new line."""
     
@@ -226,7 +229,11 @@ async def compile_report_node(state: LeadershipAgentState) -> LeadershipAgentSta
     If the executive holds or held DRI roles for a business or product in a large company,
     make sure to include measurable outcome of their leadership based on the performance of
     the business or product they led if related information is gathered through the search and 
-    is present in the context provided to you above.
+    is present in the context provided to you above. When you write the report, periodically 
+    ask yourself if this executive was respnonsible for a business or product,  how was the 
+    business performing during their tenure and look for information in the provided context. 
+    However, include the leadership evaluation only if there is enough information to answer
+    those questions in the provided search context.
 
     Leadership Profile Summary (2-4 paragraphs, depending upon available information):"""
     try:

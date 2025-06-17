@@ -111,9 +111,20 @@ function App() {
         setCompletedNodes(prev => [...prev, data.node]);
         setProgress(prev => [...prev, `✅ Completed ${data.node}`]);
         
-        // Clear the parallel execution indicator if we've moved past it
-        if (currentNode === 'parallel_execution') {
-          setCurrentNode(data.node);
+        // Special handling for background agent completion
+        if (data.node === 'background_agent_node') {
+          console.log('Background agent completed - triggering parallel execution UI');
+          // Immediately show parallel execution state
+          setCurrentNode('parallel_execution');
+          // Add a small delay then clear it so individual parallel nodes can show
+          setTimeout(() => {
+            setCurrentNode(null);
+          }, 1000);
+        } else {
+          // For other nodes, clear current if it was this node
+          if (currentNode === data.node) {
+            setCurrentNode(null);
+          }
         }
       },
       final_result: (data) => {

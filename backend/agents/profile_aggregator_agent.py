@@ -25,7 +25,9 @@ async def get_aggregated_profile(state: AgentState) -> str:
     collected from extensive web searches by AI agents for an executive/professional. Based on only the provided
     information, create a comprehensive executive profile. The profile should be completely fact-based
     on only provided information, and should not include any assumptions or opinions. It should be 
-    appropriately structured and formatted, based on the available information for the profile.
+    appropriately structured and formatted, based on the available information for the profile. You 
+    need to prioritize any objective or measurable statistics, achievements, or recognitions of the 
+    executive if present in the provided information. 
 
     Remember, don't try to make up any information, or section when information not available. Your task 
     is not to complete the profile of the executive, but to aggregate the information provided and present 

@@ -79,11 +79,19 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
     { key: 'profile_aggregator_node', label: 'Profile Compilation', icon: '📊', color: 'indigo' }
   ];
 
-  // Check if we're in parallel execution phase - updated logic
+  // Enhanced parallel detection logic
   const parallelNodes = ['leadership_agent_node', 'reputation_agent_node', 'strategy_agent_node'];
+  const backgroundCompleted = localCompletedNodes.includes('background_agent_node');
+  const anyParallelNodeStarted = parallelNodes.some(node => 
+    localCurrentNode === node || localCompletedNodes.includes(node)
+  );
+  
+  // Show parallel phase if background is done OR parallel execution has started
   const isParallelPhase = 
     localCurrentNode === 'parallel_execution' || 
-    parallelNodes.some(node => localCurrentNode === node || localCompletedNodes.includes(node));
+    backgroundCompleted ||
+    anyParallelNodeStarted;
+    
   const completedParallelNodes = parallelNodes.filter(node => localCompletedNodes.includes(node));
 
   return (
@@ -156,9 +164,10 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
                       }
                     </div>
                   </div>
-                  <div className="text-xs bg-purple-100 text-purple-600 px-2 py-1 rounded-full">
-                    {localCurrentNode === 'parallel_execution' ? 'Starting...' : 'Parallel'}
-                  </div>
+                  {/* Show spinner when parallel execution is active */}
+                  {(localCurrentNode === 'parallel_execution' || anyParallelNodeStarted) && completedParallelNodes.length < 3 && (
+                    <div className="w-4 h-4 border-2 border-purple-200 border-t-purple-600 rounded-full animate-spin"></div>
+                  )}
                 </div>
                 
                 {/* Progress bar for parallel execution */}
@@ -174,7 +183,7 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
                 </div>
                 
                 {/* Show parallel agents immediately when parallel execution starts */}
-                {(localCurrentNode === 'parallel_execution' || completedParallelNodes.length > 0) && (
+                {(localCurrentNode === 'parallel_execution' || completedParallelNodes.length > 0 || backgroundCompleted) && (
                   <div className="text-xs text-purple-600 bg-purple-50 rounded px-2 py-1 mt-2">
                     <div className="flex items-center space-x-1">
                       <svg className="w-3 h-3 animate-pulse" fill="currentColor" viewBox="0 0 20 20">
@@ -191,8 +200,8 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
           if (step.isParallel) {
             const isCompleted = localCompletedNodes.includes(step.key);
             const isCurrent = localCurrentNode === step.key;
-            // Show as active if parallel execution just started
-            const isParallelActive = localCurrentNode === 'parallel_execution';
+            // Show as active if background is completed and this parallel node hasn't finished
+            const isParallelActive = backgroundCompleted && !isCompleted;
             
             return (
               <motion.div
@@ -207,7 +216,7 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
                   ${isCompleted 
                     ? 'bg-green-100 text-green-700 border border-green-300' 
                     : (isCurrent || isParallelActive)
-                    ? 'bg-blue-100 text-blue-700 border border-blue-300 animate-pulse' 
+                    ? 'bg-blue-100 text-blue-700 border border-blue-300' 
                     : 'bg-gray-100 text-gray-500 border border-gray-200'
                   }
                 `}>
@@ -242,7 +251,8 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
                   </div>
                 </div>
                 
-                {(isCurrent || isParallelActive) && (
+                {/* Show spinner only when this specific node is actually running */}
+                {isCurrent && (
                   <div className="w-3 h-3 border border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
                 )}
               </motion.div>
@@ -266,7 +276,7 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
                 ${isCompleted 
                   ? 'bg-green-100 text-green-700 border-2 border-green-300' 
                   : isCurrent 
-                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-300 animate-pulse' 
+                  ? 'bg-blue-100 text-blue-700 border-2 border-blue-300' 
                   : 'bg-gray-100 text-gray-500 border-2 border-gray-200'
                 }
               `}>
@@ -291,6 +301,7 @@ const StreamingProgress = ({ currentNode, completedNodes, startTime }) => {
                 </div>
               </div>
               
+              {/* Show spinner only when this specific node is actually running */}
               {isCurrent && (
                 <div className="w-4 h-4 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"></div>
               )}
